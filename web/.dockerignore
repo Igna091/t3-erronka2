@@ -1,0 +1,15 @@
+# Only the PHP image's inputs go into the build context; secrets never do.
+*
+!php/
+!laravel/
+
+# Rebuilt inside the image, or dev-only
+laravel/vendor/
+laravel/node_modules/
+laravel/bootstrap/cache/*.php
+laravel/storage/logs/*.log
+laravel/database/*.sqlite
+laravel/public/hot
+laravel/tests/
+laravel/.env
+laravel/*.md

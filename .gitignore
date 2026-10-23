@@ -1,0 +1,17 @@
+# No private key, keystore or password ever reaches GitHub (issue #2).
+# Public certificates are committed as .crt.
+*.key
+*.pem
+*.p12
+*.pfx
+*.kdbx
+.env
+.env.*
+!.env.example
+
+# Machine-specific secrets for the web stack, created by web/scripts/dev-init.sh
+web/secrets/
+
+# OS clutter
+.DS_Store
+Thumbs.db

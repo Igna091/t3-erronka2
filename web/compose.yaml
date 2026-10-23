@@ -1,0 +1,197 @@
+# web01 stack (issue #18): Nginx -> PHP-FPM 8.5.12 running Laravel -> PostgreSQL 18.
+# Only nginx publishes ports; php and db sit on an internal network with no route out.
+# First run: bash scripts/dev-init.sh && docker compose up -d --build --wait   (see README.md)
+#
+# Images are pinned by digest. To bump one, change the tag and the digest together:
+#   docker buildx imagetools inspect <image>:<tag>
+
+name: guenaga-web
+
+# Runtime baseline every service gets (plan: Docker, hardening baseline)
+x-hardening: &hardening
+  read_only: true
+  cap_drop: [ALL]
+  security_opt: ["no-new-privileges:true"]
+  restart: unless-stopped
+  logging:
+    driver: json-file
+    options: { max-size: "10m", max-file: "5" }
+
+x-healthcheck: &healthcheck
+  interval: 30s
+  timeout: 5s
+  retries: 3
+  start_period: 30s
+  start_interval: 2s
+
+x-php-build: &php-build
+  context: .
+  dockerfile: php/Dockerfile
+  target: runtime
+
+# Laravel settings shared by php and migrate. Secrets are passed as files (*_FILE), never as values.
+x-laravel-env: &laravel-env
+  APP_NAME: Guenaga Farmazeutika
+  APP_ENV: production
+  APP_DEBUG: "false"
+  APP_URL: ${APP_URL:-https://localhost}
+  APP_KEY_FILE: /run/secrets/app_key
+  LOG_CHANNEL: stderr
+  LOG_LEVEL: info
+  DB_CONNECTION: pgsql
+  DB_HOST: db
+  DB_PORT: "5432"
+  DB_DATABASE: guenaga
+  HASH_DRIVER: argon2id
+  SESSION_DRIVER: database
+  SESSION_LIFETIME: "30"
+  SESSION_ENCRYPT: "true"
+  SESSION_SECURE_COOKIE: "true"
+  SESSION_SAME_SITE: strict
+  # The __Host- prefix makes the browser reject the cookie unless it is Secure, host-only and Path=/
+  SESSION_COOKIE: __Host-gfsid
+  CACHE_STORE: database
+  QUEUE_CONNECTION: sync
+
+# Laravel's only writable paths besides the uploads volume, owned by www-data (uid 33)
+x-laravel-tmpfs: &laravel-tmpfs
+  - /tmp
+  - /var/www/app/storage/framework/cache:uid=33,gid=33,mode=0700
+  - /var/www/app/storage/framework/views:uid=33,gid=33,mode=0700
+  - /var/www/app/storage/logs:uid=33,gid=33,mode=0700
+
+services:
+  nginx:
+    <<: *hardening
+    image: nginx:1.30.6@sha256:a7675fcee220f59b4a99f7098c06a0d5d999c2c0ee37c0211efb780536e5cb20
+    # Unprivileged: listens on 8080/8443 inside the container, published as 80/443
+    user: "101:101"
+    ports:
+      - "${HTTP_PORT:-80}:8080"
+      - "${HTTPS_PORT:-443}:8443"
+    environment:
+      NGINX_ENTRYPOINT_QUIET_LOGS: "1"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/snippets:/etc/nginx/snippets:ro
+      - ./laravel/public:/var/www/app/public:ro
+    tmpfs:
+      - /tmp
+    secrets: [tls_crt, tls_key]
+    networks: [frontend, backend]
+    depends_on:
+      php:
+        condition: service_healthy
+    healthcheck:
+      <<: *healthcheck
+      test: ["CMD", "curl", "-fs", "-o", "/dev/null", "http://127.0.0.1:8080/"]
+    deploy:
+      resources:
+        limits: { cpus: "0.50", memory: 128M, pids: 100 }
+
+  php:
+    <<: *hardening
+    build: *php-build
+    # CI/CD (#21) replaces this local tag with the image it pushes to GHCR
+    image: guenaga-web-php:dev
+    environment:
+      <<: *laravel-env
+      DB_USERNAME: app
+      DB_PASSWORD_FILE: /run/secrets/db_app_password
+    volumes:
+      # Profile photos on Laravel's private disk, outside public/
+      - uploads:/var/www/app/storage/app
+    tmpfs: *laravel-tmpfs
+    secrets: [app_key, db_app_password]
+    networks: [backend]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      <<: *healthcheck
+      test: ["CMD", "php", "-r", "exit(@fsockopen('127.0.0.1', 9000) ? 0 : 1);"]
+    deploy:
+      resources:
+        limits: { cpus: "1.0", memory: 512M, pids: 100 }
+
+  # One-shot: applies Laravel's migrations as the migrator role, the only role allowed DDL, then exits
+  migrate:
+    <<: *hardening
+    build: *php-build
+    image: guenaga-web-php:dev
+    command: ["php", "artisan", "migrate", "--force", "--no-interaction"]
+    restart: "no"
+    environment:
+      <<: *laravel-env
+      DB_USERNAME: migrator
+      DB_PASSWORD_FILE: /run/secrets/db_migrator_password
+    tmpfs: *laravel-tmpfs
+    secrets: [db_migrator_password]
+    networks: [backend]
+    depends_on:
+      db:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits: { cpus: "1.0", memory: 256M, pids: 50 }
+
+  db:
+    <<: *hardening
+    image: postgres:18.6-trixie@sha256:edb0c08dc33befd0262ab3b5cf1c4f3f8cfd8b09e88c05b45adee29d6761ddb6
+    user: postgres
+    command:
+      - postgres
+      - -c
+      - hba_file=/etc/postgresql/pg_hba.conf
+      - -c
+      - log_connections=on
+      - -c
+      - log_disconnections=on
+    environment:
+      POSTGRES_DB: guenaga
+      POSTGRES_PASSWORD_FILE: /run/secrets/db_admin_password
+    volumes:
+      - dbdata:/var/lib/postgresql
+      - ./db/pg_hba.conf:/etc/postgresql/pg_hba.conf:ro
+      - ./db/init:/docker-entrypoint-initdb.d:ro
+    tmpfs:
+      - /var/run/postgresql:uid=999,gid=999
+      - /tmp
+    secrets: [db_admin_password, db_migrator_password, db_app_password, db_mailer_password]
+    networks: [backend]
+    healthcheck:
+      <<: *healthcheck
+      test: ["CMD", "pg_isready", "-U", "postgres", "-d", "guenaga"]
+    deploy:
+      resources:
+        limits: { cpus: "1.0", memory: 512M, pids: 100 }
+
+networks:
+  frontend: {}
+  backend:
+    internal: true
+    ipam:
+      config:
+        # db/pg_hba.conf only accepts the stack's roles from this subnet; keep them in sync
+        - subnet: 172.30.10.0/24
+
+volumes:
+  dbdata: {}
+  uploads: {}
+
+# Created by scripts/dev-init.sh; on web01 the TLS pair comes from the Infra TLS CA (#10)
+secrets:
+  app_key:
+    file: ./secrets/app_key
+  db_admin_password:
+    file: ./secrets/db_admin_password
+  db_migrator_password:
+    file: ./secrets/db_migrator_password
+  db_app_password:
+    file: ./secrets/db_app_password
+  db_mailer_password:
+    file: ./secrets/db_mailer_password
+  tls_crt:
+    file: ./secrets/tls.crt
+  tls_key:
+    file: ./secrets/tls.key
