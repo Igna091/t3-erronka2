@@ -1,0 +1,28 @@
+# Dev only, never on web01:
+#   docker compose -f compose.yaml -f compose.dev.yaml up -d --build --wait
+# - php runs the code straight from ./laravel, so edits show up without a rebuild
+# - APP_DEBUG shows Laravel's full error pages, which leak configuration
+# - "tools" runs composer and artisan without installing PHP on your machine, e.g.
+#     docker compose -f compose.yaml -f compose.dev.yaml run --rm tools composer require laravel/fortify
+#     docker compose -f compose.yaml -f compose.dev.yaml run --rm tools php artisan make:controller ProfileController
+
+services:
+  php:
+    environment:
+      APP_ENV: local
+      APP_DEBUG: "true"
+    volumes:
+      - ./laravel:/var/www/app:ro
+
+  tools:
+    profiles: [tools]
+    build:
+      context: .
+      dockerfile: php/Dockerfile
+      target: dev
+    image: guenaga-web-php:tools
+    # Root by default, which Docker Desktop on Windows needs to write to the bind mount.
+    # On Linux, run `export UID GID=$(id -g)` first so created files belong to you.
+    user: "${UID:-0}:${GID:-0}"
+    volumes:
+      - ./laravel:/var/www/app
