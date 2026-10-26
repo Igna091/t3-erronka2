@@ -75,7 +75,7 @@ class PaymentController extends Controller
             return redirect()->route('payment.show', $order);
         }
 
-        $code = preg_replace('/\s+/', '', (string) $request->input('code'));
+        $code = (string) preg_replace('/\s+/', '', (string) $request->input('code'));
 
         if (! hash_equals($check['code'], $code)) {
             if (++$check['attempts'] >= 3) {

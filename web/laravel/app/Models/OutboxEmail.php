@@ -8,6 +8,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 /**
  * An email waiting for the Python mailer (python/, #22), which sends it and records the
  * outcome. The site only ever adds these.
+ *
+ * @property array<string, mixed>|null $payload
  */
 class OutboxEmail extends Model
 {
@@ -30,6 +32,9 @@ class OutboxEmail extends Model
         ];
     }
 
+    /**
+     * @return BelongsTo<Order, $this>
+     */
     public function order(): BelongsTo
     {
         return $this->belongsTo(Order::class);

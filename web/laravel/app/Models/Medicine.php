@@ -40,6 +40,9 @@ class Medicine extends Model
         ];
     }
 
+    /**
+     * @param  Builder<Medicine>  $query
+     */
     public function scopeActive(Builder $query): void
     {
         $query->where('active', true);

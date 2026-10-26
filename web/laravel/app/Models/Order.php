@@ -46,11 +46,17 @@ class Order extends Model
         return 'GF-'.Str::upper(Str::random(8));
     }
 
+    /**
+     * @return HasMany<OrderItem, $this>
+     */
     public function items(): HasMany
     {
         return $this->hasMany(OrderItem::class);
     }
 
+    /**
+     * @return HasMany<OutboxEmail, $this>
+     */
     public function outboxEmails(): HasMany
     {
         return $this->hasMany(OutboxEmail::class);
@@ -77,7 +83,7 @@ class Order extends Model
         return [
             'to' => ['name' => $this->customer_name, 'email' => $this->email],
             'reference' => $this->reference,
-            'placed_at' => $this->created_at->copy()->setTimezone(config('pharmacy.timezone'))->toIso8601String(),
+            'placed_at' => ($this->created_at ?? now())->copy()->setTimezone(config('pharmacy.timezone'))->toIso8601String(),
             'phone' => $this->phone,
             'items' => $this->items()->orderBy('id')->get()->map(fn (OrderItem $item) => [
                 'name' => $item->name,

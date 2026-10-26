@@ -54,7 +54,7 @@ class ShopTest extends TestCase
 
     public function test_basket_takes_at_most_two_packs_of_a_medicine(): void
     {
-        $paracetamol = Medicine::where('slug', 'paracetamol-500-mg')->first();
+        $paracetamol = Medicine::where('slug', 'paracetamol-500-mg')->firstOrFail();
 
         $this->post('/basket/paracetamol-500-mg');
         $this->post('/basket/paracetamol-500-mg');
@@ -125,7 +125,7 @@ class ShopTest extends TestCase
         $this->post("/orders/{$order->reference}/pay", $this->card('5555 5555 5555 4444'))
             ->assertSessionHasErrors(['card_number' => 'In this demo only the demo cards work, so a real card is never used. Pick one under the card number.']);
 
-        $this->assertSame('pending', $order->fresh()->payment_status);
+        $this->assertSame('pending', $order->refresh()->payment_status);
         $this->assertFalse(session()->hasOldInput('card_number'));
         $this->assertFalse(session()->hasOldInput('card_cvc'));
     }
@@ -144,7 +144,7 @@ class ShopTest extends TestCase
 
         $this->post("/orders/{$order->reference}/pay", $this->card('4000 0000 0000 0002'))->assertRedirect("/orders/{$order->reference}/pay");
 
-        $this->assertSame('declined', $order->fresh()->payment_status);
+        $this->assertSame('declined', $order->refresh()->payment_status);
         $this->get("/orders/{$order->reference}/pay")->assertSee('This demo card is always declined');
     }
 
@@ -157,7 +157,7 @@ class ShopTest extends TestCase
         $this->get("/orders/{$order->reference}/pay")->assertSee($code)->assertSee('Confirm it’s you');
 
         $this->post("/orders/{$order->reference}/confirm", ['code' => '000000'])->assertSessionHasErrors('code');
-        $this->assertSame('pending', $order->fresh()->payment_status);
+        $this->assertSame('pending', $order->refresh()->payment_status);
 
         $this->post("/orders/{$order->reference}/confirm", ['code' => $code])->assertRedirect("/orders/{$order->reference}/pay");
         $this->get("/orders/{$order->reference}/pay")->assertSee('Payment approved');
@@ -166,7 +166,7 @@ class ShopTest extends TestCase
         $this->assertSame('paid', $order->payment_status);
         $this->assertSame('4242', $order->card_last4);
         $this->assertStringNotContainsString('4242424242424242', DB::table('orders')->get()->toJson());
-        $this->assertStringNotContainsString('4242424242424242', json_encode(session()->all()));
+        $this->assertStringNotContainsString('4242424242424242', (string) json_encode(session()->all()));
     }
 
     public function test_three_wrong_codes_decline_the_payment(): void
@@ -178,7 +178,7 @@ class ShopTest extends TestCase
         $this->post("/orders/{$order->reference}/confirm", ['code' => '000000']);
         $this->post("/orders/{$order->reference}/confirm", ['code' => '000000']);
 
-        $this->assertSame('declined', $order->fresh()->payment_status);
+        $this->assertSame('declined', $order->refresh()->payment_status);
         $this->get("/orders/{$order->reference}/pay")->assertSee('The code was wrong three times');
     }
 
@@ -189,7 +189,7 @@ class ShopTest extends TestCase
         $this->post("/orders/{$order->reference}/confirm", ['code' => session("payment_check.{$order->id}.code")]);
 
         $this->post("/orders/{$order->reference}/pay", $this->card('4000 0000 0000 0002'))->assertRedirect("/orders/{$order->reference}");
-        $this->assertSame('paid', $order->fresh()->payment_status);
+        $this->assertSame('paid', $order->refresh()->payment_status);
     }
 
     public function test_an_order_is_private_to_the_session_that_placed_it(): void
@@ -212,14 +212,16 @@ class ShopTest extends TestCase
         $email = OutboxEmail::sole();
         $this->assertSame($order->id, $email->order_id);
         $this->assertSame('order_confirmation', $email->kind);
-        $this->assertSame(['name' => 'Ane Etxeberria', 'email' => 'ane@example.com'], $email->payload['to']);
-        $this->assertSame($order->reference, $email->payload['reference']);
-        $this->assertSame([['name' => 'Paracetamol 500 mg', 'quantity' => 1, 'line_cents' => 195]], $email->payload['items']);
-        $this->assertSame(195, $email->payload['total_cents']);
-        $this->assertSame(['status' => 'at_counter', 'card_last4' => null], $email->payload['payment']);
         $this->assertNull($email->sent_at);
 
-        $stored = DB::table('email_outbox')->value('payload');
+        $payload = $this->queuedEmail();
+        $this->assertSame(['name' => 'Ane Etxeberria', 'email' => 'ane@example.com'], $payload['to']);
+        $this->assertSame($order->reference, $payload['reference']);
+        $this->assertSame([['name' => 'Paracetamol 500 mg', 'quantity' => 1, 'line_cents' => 195]], $payload['items']);
+        $this->assertSame(195, $payload['total_cents']);
+        $this->assertSame(['status' => 'at_counter', 'card_last4' => null], $payload['payment']);
+
+        $stored = (string) DB::table('email_outbox')->value('payload');
         foreach (['Penicillin', 'warfarin', 'pregnant', 'taker', '"age"'] as $healthAnswer) {
             $this->assertStringNotContainsString($healthAnswer, $stored);
         }
@@ -233,7 +235,7 @@ class ShopTest extends TestCase
 
         $this->post("/orders/{$order->reference}/confirm", ['code' => session("payment_check.{$order->id}.code")]);
 
-        $this->assertSame(['status' => 'paid', 'card_last4' => '4242'], OutboxEmail::sole()->payload['payment']);
+        $this->assertSame(['status' => 'paid', 'card_last4' => '4242'], $this->queuedEmail()['payment']);
     }
 
     public function test_a_declined_card_queues_nothing_until_the_order_is_paid_at_the_counter(): void
@@ -245,7 +247,7 @@ class ShopTest extends TestCase
         $this->post("/orders/{$order->reference}/pay-at-counter");
         $this->post("/orders/{$order->reference}/pay-at-counter");
 
-        $this->assertSame('at_counter', OutboxEmail::sole()->payload['payment']['status']);
+        $this->assertSame(['status' => 'at_counter', 'card_last4' => null], $this->queuedEmail()['payment']);
     }
 
     public function test_shop_pages_use_nothing_the_content_security_policy_blocks(): void
@@ -292,6 +294,21 @@ class ShopTest extends TestCase
         $this->post('/checkout', $this->answers($answers));
 
         return Order::latest('id')->firstOrFail();
+    }
+
+    /**
+     * The payload of the only email queued so far.
+     *
+     * @return array<string, mixed>
+     */
+    private function queuedEmail(): array
+    {
+        $payload = OutboxEmail::sole()->payload;
+        if ($payload === null) {
+            $this->fail('The queued email has no payload');
+        }
+
+        return $payload;
     }
 
     /**

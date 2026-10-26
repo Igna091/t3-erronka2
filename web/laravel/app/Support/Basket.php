@@ -73,14 +73,15 @@ class Basket
         $quantities = $this->quantities();
         $medicines = Medicine::active()->whereIn('id', array_keys($quantities))->get()->keyBy('id');
 
-        return collect($quantities)
-            ->filter(fn (int $packs, int $id) => $medicines->has($id))
-            ->map(fn (int $packs, int $id) => [
-                'medicine' => $medicines[$id],
-                'quantity' => $packs,
-                'line_cents' => $medicines[$id]->price_cents * $packs,
-            ])
-            ->values();
+        $lines = [];
+        foreach ($quantities as $id => $packs) {
+            $medicine = $medicines->get($id);
+            if ($medicine !== null) {
+                $lines[] = ['medicine' => $medicine, 'quantity' => $packs, 'line_cents' => $medicine->price_cents * $packs];
+            }
+        }
+
+        return collect($lines);
     }
 
     /**
