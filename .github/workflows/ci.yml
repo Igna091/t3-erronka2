@@ -1,0 +1,186 @@
+# CI/CD for the website and the mailer (issue #21), explained in web/DEPLOY.md.
+#
+# Every pull request and push to main: php -l, PHPStan, composer audit, the tests, Semgrep and
+# ShellCheck, then both images built and scanned by Trivy, which fails on any CRITICAL CVE.
+# Pushes to main and release tags (vX.Y.Z) also push the images to GitHub Container Registry, and
+# a release tag is then deployed to web01 (deploy.yml). Every Monday it all runs again, so a CVE
+# published since the last push still fails a build.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+    tags: ["v*.*.*"]
+  schedule:
+    - cron: "23 5 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  # Bump the tag and the digest together: docker buildx imagetools inspect <image>:<tag>
+  TRIVY_IMAGE: aquasec/trivy:0.76.1@sha256:790fd66d1697395d8693d1acaa1ea702406a20f109b6fc7bac8db623eca6c06c
+  SEMGREP_IMAGE: semgrep/semgrep:1.181.1@sha256:3db5c7af55eb1f512eac0abf0ab69a97b52c74b5e9a27314c221aee1a78d7ab2
+  ACTIONLINT_IMAGE: rhysd/actionlint:1.7.12@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667
+
+jobs:
+  php:
+    name: PHP
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      # The same PHP as production (web/php/Dockerfile, dev stage, which adds Composer)
+      PHP: docker run --rm --volume ${{ github.workspace }}/web/laravel:/var/www/app php-tools
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Build the PHP tools image
+        run: docker build --quiet --target dev --tag php-tools --file web/php/Dockerfile web
+      - name: composer validate
+        run: $PHP composer validate --strict
+      - name: composer audit (known vulnerabilities in the dependencies)
+        run: $PHP composer audit --locked
+      - name: composer install
+        run: $PHP composer install --no-interaction --no-progress --prefer-dist
+      - name: php -l
+        run: $PHP sh -c 'find app bootstrap config database routes tests -name "*.php" -print0 | xargs -0 -n 1 php -l > /dev/null'
+      - name: PHPStan (level 8, with Larastan)
+        run: $PHP php vendor/bin/phpstan analyse --memory-limit=1G --no-progress --error-format=github
+      - name: Tests
+        run: $PHP php vendor/bin/phpunit
+
+  python:
+    name: Python mailer
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Build the mailer's test image
+        run: docker build --quiet --target dev --tag mailer-tools python
+      - name: Tests, without a network
+        run: docker run --rm --network none --read-only --tmpfs /tmp --volume "$GITHUB_WORKSPACE/python:/app:ro" mailer-tools python -m pytest
+      - name: Known vulnerabilities in the Python dependencies (any severity)
+        run: docker run --rm --volume "$GITHUB_WORKSPACE/python:/src:ro" "$TRIVY_IMAGE" fs --quiet --scanners vuln --exit-code 1 /src
+
+  scripts:
+    name: Scripts and workflows
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: ShellCheck
+        run: shellcheck web/scripts/*.sh web/db/init/*.sh
+      - name: actionlint (these workflows, and ShellCheck on their scripts)
+        run: docker run --rm --volume "$GITHUB_WORKSPACE:/repo:ro" --workdir /repo "$ACTIONLINT_IMAGE" -no-color
+      - name: The deploy script (deploy, rollback, refusals)
+        run: bash web/scripts/deploy-test.sh
+
+  semgrep:
+    name: Semgrep
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Semgrep (PHP, Python, Dockerfiles, Compose, workflows, secrets)
+        run: >-
+          docker run --rm --volume "$GITHUB_WORKSPACE:/src" --workdir /src "$SEMGREP_IMAGE"
+          semgrep scan --metrics off --error
+          --config p/php --config p/python --config p/dockerfile --config p/docker-compose
+          --config p/github-actions --config p/secrets
+
+  images:
+    name: Image (${{ matrix.image }})
+    needs: [php, python, scripts, semgrep]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image: php
+            context: web
+            dockerfile: web/php/Dockerfile
+          - image: mailer
+            context: python
+            dockerfile: python/Dockerfile
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Tags
+        id: tags
+        env:
+          IMAGE: ${{ matrix.image }}
+        run: |
+          name="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/guenaga-web-$IMAGE"
+          tags="$name:sha-${GITHUB_SHA::12}"
+          case $GITHUB_REF in
+            refs/heads/main) tags+=" $name:main" ;;
+            refs/tags/v*) tags+=" $name:$GITHUB_REF_NAME" ;;
+          esac
+          echo "tags=$tags" >> "$GITHUB_OUTPUT"
+      - name: Build
+        env:
+          CONTEXT: ${{ matrix.context }}
+          DOCKERFILE: ${{ matrix.dockerfile }}
+          TAGS: ${{ steps.tags.outputs.tags }}
+        run: |
+          args=()
+          for tag in $TAGS; do args+=(--tag "$tag"); done
+          docker build --target runtime "${args[@]}" \
+            --label "org.opencontainers.image.source=$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" \
+            --label "org.opencontainers.image.revision=$GITHUB_SHA" \
+            --file "$DOCKERFILE" "$CONTEXT"
+          docker save --output "$RUNNER_TEMP/image.tar" "${TAGS%% *}"
+      - name: Trivy (fails on any CRITICAL vulnerability)
+        env:
+          DOCKERFILE: ${{ matrix.dockerfile }}
+        run: |
+          # A CRITICAL CVE with no fix yet can be accepted for a while in a .trivyignore.yaml next
+          # to the Dockerfile, with a reason and an expiry date (web/DEPLOY.md)
+          ignore=()
+          accepted="$(dirname "$DOCKERFILE")/.trivyignore.yaml"
+          if [[ -f $accepted ]]; then ignore=(--ignorefile "/src/$accepted"); fi
+          trivy=(docker run --rm --volume "$RUNNER_TEMP:/scan" --volume "$GITHUB_WORKSPACE:/src:ro" "$TRIVY_IMAGE")
+          "${trivy[@]}" image --quiet --cache-dir /scan/trivy-cache --input /scan/image.tar --scanners vuln \
+            --severity HIGH --exit-code 0 "${ignore[@]}"
+          "${trivy[@]}" image --quiet --cache-dir /scan/trivy-cache --input /scan/image.tar --scanners vuln \
+            --severity CRITICAL --exit-code 1 "${ignore[@]}"
+      - name: Push to GitHub Container Registry
+        if: github.event_name == 'push'
+        env:
+          TAGS: ${{ steps.tags.outputs.tags }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          printf '%s' "$GH_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+          for tag in $TAGS; do docker push --quiet "$tag"; done
+          docker logout ghcr.io
+
+  deploy:
+    name: Deploy
+    needs: images
+    # Off until the self-hosted runner in U1-IT exists: set the repository variable DEPLOY_ENABLED
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && vars.DEPLOY_ENABLED == 'true'
+    permissions:
+      contents: read
+      packages: read
+    # No secrets passed: the deploy job reads the SSH key from the production environment
+    uses: ./.github/workflows/deploy.yml
+    with:
+      tag: ${{ github.ref_name }}

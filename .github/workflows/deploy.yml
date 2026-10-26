@@ -1,0 +1,66 @@
+# Deploys a release to web01 (issue #21): a vX.Y.Z tag whose images CI pushed to GHCR. CI calls it
+# for every new release tag; run it by hand (Actions → Deploy → Run workflow) to deploy any release,
+# including an older one. rollback.yml calls it to go back one release.
+#
+# It runs on the self-hosted runner in U1-IT, the only machine that can reach web01, and connects
+# over SSH with a key that can run nothing but the deploy script (web/scripts/deploy.sh). Set-up,
+# secrets and disaster recovery: web/DEPLOY.md.
+name: Deploy
+
+on:
+  workflow_call:
+    inputs:
+      tag:
+        type: string
+        default: ""
+      rollback:
+        type: boolean
+        default: false
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release to deploy, such as v1.4.0
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  web01:
+    name: ${{ inputs.rollback && 'Roll back web01' || format('Deploy {0} to web01', inputs.tag) }}
+    runs-on: [self-hosted, linux, u1-it]
+    environment: production
+    timeout-minutes: 15
+    # One deploy or rollback at a time; a second one waits
+    concurrency:
+      group: web01
+      cancel-in-progress: false
+    steps:
+      - name: Run the deploy script on web01 over SSH
+        env:
+          TAG: ${{ inputs.tag }}
+          ROLLBACK: ${{ inputs.rollback }}
+          # A secret of the production environment, so only jobs that run in it can read it
+          SSH_KEY: ${{ secrets.WEB01_SSH_KEY }}
+          KNOWN_HOSTS: ${{ vars.WEB01_KNOWN_HOSTS }}
+          TARGET: ${{ vars.WEB01_USER }}@${{ vars.WEB01_HOST }}
+          # Lets web01 pull the images: it can only read packages and expires when this job ends
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [[ $ROLLBACK == true ]]; then
+            command=rollback
+          elif [[ $TAG =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            command="deploy $TAG"
+          else
+            echo "::error::Not a release tag: '$TAG' (expected vX.Y.Z)"
+            exit 1
+          fi
+          dir=$(mktemp -d)
+          trap 'rm -rf "$dir"' EXIT
+          (umask 077 && printf '%s\n' "$SSH_KEY" > "$dir/key" && printf '%s\n' "$KNOWN_HOSTS" > "$dir/known_hosts")
+          # Only web01's known host key is accepted, so a machine pretending to be web01 gets nothing
+          printf '%s' "$GH_TOKEN" | ssh -i "$dir/key" -o IdentitiesOnly=yes -o BatchMode=yes \
+            -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$dir/known_hosts" \
+            "$TARGET" "$command"

@@ -55,12 +55,12 @@ x-laravel-env: &laravel-env
   CACHE_STORE: database
   QUEUE_CONNECTION: sync
 
-# Laravel's only writable paths besides the uploads volume, owned by www-data (uid 33)
+# Laravel's only writable paths besides the uploads volume, owned by www-data (uid 82 in the Alpine image)
 x-laravel-tmpfs: &laravel-tmpfs
   - /tmp
-  - /var/www/app/storage/framework/cache:uid=33,gid=33,mode=0700
-  - /var/www/app/storage/framework/views:uid=33,gid=33,mode=0700
-  - /var/www/app/storage/logs:uid=33,gid=33,mode=0700
+  - /var/www/app/storage/framework/cache:uid=82,gid=82,mode=0700
+  - /var/www/app/storage/framework/views:uid=82,gid=82,mode=0700
+  - /var/www/app/storage/logs:uid=82,gid=82,mode=0700
 
 services:
   nginx:
@@ -94,8 +94,9 @@ services:
   php:
     <<: *hardening
     build: *php-build
-    # CI/CD (#21) replaces this local tag with the image it pushes to GHCR
-    image: guenaga-web-php:dev
+    # Built here by default; on web01 the deploy script sets PHP_IMAGE to the release CI pushed to
+    # GHCR (web/DEPLOY.md)
+    image: ${PHP_IMAGE:-guenaga-web-php:dev}
     environment:
       <<: *laravel-env
       DB_USERNAME: app
@@ -121,7 +122,7 @@ services:
   migrate:
     <<: *hardening
     build: *php-build
-    image: guenaga-web-php:dev
+    image: ${PHP_IMAGE:-guenaga-web-php:dev}
     command: ["php", "artisan", "migrate", "--seed", "--force", "--no-interaction"]
     restart: "no"
     environment:
@@ -178,7 +179,7 @@ services:
     build:
       context: ../python
       target: runtime
-    image: guenaga-web-mailer:dev
+    image: ${MAILER_IMAGE:-guenaga-web-mailer:dev}
     environment:
       DB_HOST: db
       DB_PORT: "5432"
