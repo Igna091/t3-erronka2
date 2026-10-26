@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\Medicine;
 use App\Models\Order;
+use App\Models\OutboxEmail;
 use Database\Seeders\MedicineSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -202,6 +203,49 @@ class ShopTest extends TestCase
         $this->get("/orders/{$order->reference}/pay")->assertNotFound();
         $this->post("/orders/{$order->reference}/pay", $this->card('4242 4242 4242 4242'))->assertNotFound();
         $this->post("/orders/{$order->reference}/pay-at-counter")->assertNotFound();
+    }
+
+    public function test_paying_at_the_counter_queues_the_confirmation_email_without_health_answers(): void
+    {
+        $order = $this->placeOrder(['payment' => 'counter', 'health_notes' => 'Takes warfarin']);
+
+        $email = OutboxEmail::sole();
+        $this->assertSame($order->id, $email->order_id);
+        $this->assertSame('order_confirmation', $email->kind);
+        $this->assertSame(['name' => 'Ane Etxeberria', 'email' => 'ane@example.com'], $email->payload['to']);
+        $this->assertSame($order->reference, $email->payload['reference']);
+        $this->assertSame([['name' => 'Paracetamol 500 mg', 'quantity' => 1, 'line_cents' => 195]], $email->payload['items']);
+        $this->assertSame(195, $email->payload['total_cents']);
+        $this->assertSame(['status' => 'at_counter', 'card_last4' => null], $email->payload['payment']);
+        $this->assertNull($email->sent_at);
+
+        $stored = DB::table('email_outbox')->value('payload');
+        foreach (['Penicillin', 'warfarin', 'pregnant', 'taker', '"age"'] as $healthAnswer) {
+            $this->assertStringNotContainsString($healthAnswer, $stored);
+        }
+    }
+
+    public function test_a_card_order_queues_its_confirmation_email_once_the_payment_is_approved(): void
+    {
+        $order = $this->placeOrder();
+        $this->post("/orders/{$order->reference}/pay", $this->card('4242 4242 4242 4242'));
+        $this->assertSame(0, OutboxEmail::count());
+
+        $this->post("/orders/{$order->reference}/confirm", ['code' => session("payment_check.{$order->id}.code")]);
+
+        $this->assertSame(['status' => 'paid', 'card_last4' => '4242'], OutboxEmail::sole()->payload['payment']);
+    }
+
+    public function test_a_declined_card_queues_nothing_until_the_order_is_paid_at_the_counter(): void
+    {
+        $order = $this->placeOrder();
+        $this->post("/orders/{$order->reference}/pay", $this->card('4000 0000 0000 0002'));
+        $this->assertSame(0, OutboxEmail::count());
+
+        $this->post("/orders/{$order->reference}/pay-at-counter");
+        $this->post("/orders/{$order->reference}/pay-at-counter");
+
+        $this->assertSame('at_counter', OutboxEmail::sole()->payload['payment']['status']);
     }
 
     public function test_shop_pages_use_nothing_the_content_security_policy_blocks(): void

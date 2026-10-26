@@ -63,6 +63,11 @@ class CheckoutController extends Controller
                 ]);
             }
 
+            // Paying at the counter settles the order straight away
+            if ($order->payment_status === 'at_counter') {
+                $order->queueConfirmationEmail();
+            }
+
             return $order;
         });
 

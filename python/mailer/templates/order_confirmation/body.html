@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light">
+<title>Order {{ reference }}</title>
+</head>
+{#
+  Email clients ignore stylesheets, so every style is inline, and the layout is tables.
+  No images, fonts or anything else from the web: nothing to block, nothing that tracks.
+  Colours are the site's (web/laravel/public/css/site.css).
+#}
+<body style="margin:0; padding:0; background:#F5F7F4; color:#0E3A2F; font-family:Archivo, 'Helvetica Neue', Arial, sans-serif; -webkit-text-size-adjust:100%;">
+<div style="display:none; max-height:0; overflow:hidden; mso-hide:all;">Order {{ reference }}: {{ total_cents | euros }}, to collect at {{ pharmacy.name }}.</div>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#F5F7F4;">
+<tr>
+<td align="center" style="padding:24px 12px;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;">
+  <tr>
+    <td style="padding:10px 20px; background:#F2C94C; border-radius:14px 14px 0 0; font-size:13px; line-height:1.45; color:#0E3A2F;">
+      <strong>Demo shop:</strong> prices, orders and payments are simulated. Nothing is charged and no medicine is sent.
+    </td>
+  </tr>
+  <tr>
+    <td style="background:#FFFFFF; padding:28px 28px 32px; border-radius:0 0 14px 14px;">
+
+      <p style="margin:0 0 28px; font-size:16px; font-weight:700; letter-spacing:-0.01em;">
+        <span style="display:inline-block; width:13px; height:14px; background:#F2C94C; border-radius:7px 0 0 7px; vertical-align:-2px;"></span><span style="display:inline-block; width:13px; height:14px; background:#2A4BD7; border-radius:0 7px 7px 0; vertical-align:-2px; margin-right:8px;"></span>{{ pharmacy.name }}
+      </p>
+
+      <p style="margin:0 0 10px;">
+        <span style="display:inline-block; padding:4px 12px; border-radius:999px; background:#2A4BD7; color:#FFFFFF; font-size:13px; font-weight:700; letter-spacing:0.02em;">Order {{ reference }}</span>
+      </p>
+      <h1 style="margin:0 0 12px; font-size:28px; line-height:1.15; letter-spacing:-0.02em;">Your order is confirmed</h1>
+      <p style="margin:0 0 24px; font-size:16px; line-height:1.5; color:#3D5F55;">
+        Hello {{ to.name }}, thank you for your order. We text you at {{ phone }} when it’s ready to collect, usually within {{ ready_within }}.
+      </p>
+
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="font-size:15px; line-height:1.4;">
+      {% for item in items %}
+        <tr>
+          <td style="padding:12px 0; border-top:1px solid #E2E7E1;">{{ item.name }} <span style="color:#3D5F55;">× {{ item.quantity }}</span></td>
+          <td align="right" style="padding:12px 0; border-top:1px solid #E2E7E1; white-space:nowrap;">{{ item.line_cents | euros }}</td>
+        </tr>
+      {% endfor %}
+        <tr>
+          <td style="padding:12px 0; border-top:1px solid #E2E7E1; color:#3D5F55;">Collection at the pharmacy</td>
+          <td align="right" style="padding:12px 0; border-top:1px solid #E2E7E1; color:#3D5F55;">Free</td>
+        </tr>
+        <tr>
+          <td style="padding:14px 0 0; border-top:2px solid #0E3A2F; font-size:17px; font-weight:700;">Total</td>
+          <td align="right" style="padding:14px 0 0; border-top:2px solid #0E3A2F; font-size:17px; font-weight:700; white-space:nowrap;">{{ total_cents | euros }}</td>
+        </tr>
+      </table>
+
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:24px 0 0;">
+        <tr>
+          <td style="padding:16px 18px; background:#F5F7F4; border-radius:12px; font-size:15px; line-height:1.5;">
+            <strong>Payment</strong><br>
+          {% if payment.status == "paid" %}
+            Paid by card ending {{ payment.card_last4 }}. It was a demo card, so nothing was charged.
+          {% else %}
+            You pay {{ total_cents | euros }} at the counter when you collect it, cash or card.
+          {% endif %}
+          </td>
+        </tr>
+      </table>
+
+      <h2 style="margin:32px 0 14px; font-size:18px; letter-spacing:-0.01em;">What happens next</h2>
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="font-size:15px; line-height:1.5;">
+      {% for step in [
+          "A pharmacist checks your order.",
+          "We text you at " ~ phone ~ " when it’s ready.",
+          "You collect it at the counter: tell us the reference " ~ reference ~ ".",
+      ] %}
+        <tr>
+          <td width="36" valign="top" style="padding:0 0 12px;"><span style="display:inline-block; width:24px; height:24px; line-height:24px; border-radius:12px; background:#2A4BD7; color:#FFFFFF; font-size:13px; font-weight:700; text-align:center;">{{ loop.index }}</span></td>
+          <td valign="top" style="padding:2px 0 12px;">{{ step }}</td>
+        </tr>
+      {% endfor %}
+      </table>
+      <p style="margin:4px 0 0; font-size:14px; line-height:1.5; color:#3D5F55;">
+        If the pharmacist decides a medicine isn’t right for the person taking it, we call you before preparing the order, and you don’t pay for it.
+      </p>
+
+      <h2 style="margin:32px 0 10px; font-size:18px; letter-spacing:-0.01em;">Collect it at</h2>
+      <p style="margin:0 0 12px; font-size:15px; line-height:1.5;">
+        <strong>{{ pharmacy.name }}</strong>
+      {% for line in pharmacy.address %}
+        <br>{{ line }}
+      {% endfor %}
+        <br><a href="tel:{{ pharmacy.phone.dial }}" style="color:#2A4BD7;">{{ pharmacy.phone.display }}</a>
+      </p>
+      <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="font-size:14px; line-height:1.5; color:#3D5F55;">
+      {% for days, times in pharmacy.hours %}
+        <tr>
+          <td style="padding:0 20px 2px 0;">{{ days }}</td>
+          <td style="padding:0 0 2px;">{{ times }}</td>
+        </tr>
+      {% endfor %}
+      </table>
+
+    </td>
+  </tr>
+  <tr>
+    <td style="padding:18px 8px 0; font-size:12px; line-height:1.5; color:#3D5F55;">
+      Placed on {{ placed_at | long_date }} at <a href="{{ site_url }}" style="color:#2A4BD7;">{{ site_url }}</a>.
+      This email was sent automatically and replies aren’t read: call us on {{ pharmacy.phone.display }} with any questions.
+    </td>
+  </tr>
+  </table>
+</td>
+</tr>
+</table>
+</body>
+</html>

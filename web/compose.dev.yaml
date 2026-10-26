@@ -26,3 +26,24 @@ services:
     user: "${UID:-0}:${GID:-0}"
     volumes:
       - ./laravel:/var/www/app
+
+  # The mailer runs its code from ../python/mailer: restart it to pick up an edit
+  mailer:
+    volumes:
+      - ../python/mailer:/app/mailer:ro
+
+  # The mailer's unit tests, with no network at all:
+  #   docker compose -f compose.yaml -f compose.dev.yaml run --rm mailer-tests
+  mailer-tests:
+    profiles: [tools]
+    build:
+      context: ../python
+      target: dev
+    image: guenaga-web-mailer:tools
+    command: ["python", "-m", "pytest"]
+    network_mode: none
+    read_only: true
+    tmpfs:
+      - /tmp
+    volumes:
+      - ../python:/app:ro

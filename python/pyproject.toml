@@ -1,0 +1,7 @@
+# Test settings only: the mailer runs from its image (Dockerfile), and its libraries are pinned
+# in requirements.txt.
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+# The code is mounted read-only in the mailer-tests service
+addopts = "-p no:cacheprovider"
