@@ -1,0 +1,18 @@
+# Goes back to the release deployed before the current one on web01 (issue #21): Actions →
+# Rollback → Run workflow. Running it again goes back one more. To go to a particular release
+# instead, run Deploy with its tag. web/DEPLOY.md explains how it works.
+name: Rollback
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  rollback:
+    # No secrets passed: the deploy job reads the SSH key from the production environment
+    uses: ./.github/workflows/deploy.yml
+    with:
+      rollback: true

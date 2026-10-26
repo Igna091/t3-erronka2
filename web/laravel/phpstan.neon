@@ -1,0 +1,16 @@
+# Static analysis (PHPStan with Larastan, which understands Laravel), run by CI on every pull
+# request (.github/workflows/ci.yml). Locally, from web/:
+#   docker compose -f compose.yaml -f compose.dev.yaml run --rm tools php vendor/bin/phpstan
+includes:
+    - vendor/larastan/larastan/extension.neon
+
+parameters:
+    level: 8
+    paths:
+        - app
+        - bootstrap/app.php
+        - config
+        - database
+        - routes
+        - tests
+    tmpDir: /tmp/phpstan

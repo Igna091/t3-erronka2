@@ -10,8 +10,12 @@ abstract class TestCase extends BaseTestCase
      * The page needs nothing that web/nginx/snippets/security-headers.conf blocks: no inline
      * styles, inline scripts, inline event handlers or resources from other sites.
      */
-    protected function assertCspSafe(string $html): void
+    protected function assertCspSafe(string|false $html): void
     {
+        if ($html === false) {
+            $this->fail('The response has no content');
+        }
+
         $this->assertDoesNotMatchRegularExpression('/<[^>]+\sstyle\s*=/i', $html);
         $this->assertDoesNotMatchRegularExpression('/<[^>]+\son[a-z]+\s*=/i', $html);
         $this->assertDoesNotMatchRegularExpression('/<script(?![^>]*\ssrc=)[^>]*>/i', $html);

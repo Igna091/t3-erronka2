@@ -1,0 +1,5 @@
+# actionlint (run by CI on the workflows): the labels of our own runner, the one in U1-IT that
+# deploys to web01 (web/DEPLOY.md)
+self-hosted-runner:
+  labels:
+    - u1-it

@@ -1,0 +1,32 @@
+# Weekly pull requests that bump what we pin (issue #21): base images and their digests (so a PHP
+# security release arrives as a pull request), Compose images, Composer and Python libraries and
+# the GitHub Actions. CI checks each one like any other pull request.
+version: 2
+updates:
+  - package-ecosystem: docker
+    directories: [/web/php, /python]
+    schedule:
+      interval: weekly
+
+  - package-ecosystem: docker-compose
+    directory: /web
+    schedule:
+      interval: weekly
+
+  - package-ecosystem: composer
+    directory: /web/laravel
+    schedule:
+      interval: weekly
+    groups:
+      composer:
+        update-types: [minor, patch]
+
+  - package-ecosystem: pip
+    directory: /python
+    schedule:
+      interval: weekly
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
