@@ -21,3 +21,16 @@ if (! function_exists('env_secret')) {
         return $default;
     }
 }
+
+if (! function_exists('versioned_asset')) {
+    /**
+     * URL of a file under public/ with its modification time appended, so browsers fetch it
+     * again after every change instead of reusing a cached copy.
+     */
+    function versioned_asset(string $path): string
+    {
+        $file = public_path($path);
+
+        return asset($path).(is_file($file) ? '?v='.filemtime($file) : '');
+    }
+}
