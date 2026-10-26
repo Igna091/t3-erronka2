@@ -15,6 +15,9 @@ return Application::configure(basePath: dirname(__DIR__))
         //
     })
     ->withExceptions(function (Exceptions $exceptions): void {
+        // Card details and the bank's code never go back into the session as "old input"
+        $exceptions->dontFlash(['card_number', 'card_expiry', 'card_cvc', 'code']);
+
         $exceptions->shouldRenderJsonWhen(
             fn (Request $request) => $request->is('api/*') || $request->expectsJson(),
         );

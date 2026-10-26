@@ -30,13 +30,11 @@ class HomePageTest extends TestCase
 
     public function test_page_uses_nothing_the_content_security_policy_blocks(): void
     {
-        // web/nginx/snippets/security-headers.conf allows no inline styles, inline scripts,
-        // inline event handlers or resources from other sites.
-        $html = $this->get('/')->getContent();
+        $this->assertCspSafe($this->get('/')->getContent());
+    }
 
-        $this->assertDoesNotMatchRegularExpression('/<[^>]+\sstyle\s*=/i', $html);
-        $this->assertDoesNotMatchRegularExpression('/<[^>]+\son[a-z]+\s*=/i', $html);
-        $this->assertDoesNotMatchRegularExpression('/<script(?![^>]*\ssrc=)[^>]*>/i', $html);
-        $this->assertDoesNotMatchRegularExpression('#\s(src|href)="(https?:)?//(?!localhost[/:"])#i', $html);
+    public function test_header_links_to_the_shop(): void
+    {
+        $this->get('/')->assertSee('href="'.route('shop.index').'"', false);
     }
 }

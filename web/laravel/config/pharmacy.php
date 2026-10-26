@@ -26,6 +26,12 @@ return [
     // Where "See tonight's on-duty pharmacy" points
     'on_duty_url' => '#visit',
 
+    // Online sale of medicines: Spain requires these, with the EU common logo, on every page
+    'authority' => '[regional health authority]',
+    'pharmacist' => '[name]',
+    'pharmacist_number' => '[000000]',
+    'eu_logo_url' => '#',
+
     /*
     |--------------------------------------------------------------------------
     | Opening hours

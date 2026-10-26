@@ -95,6 +95,7 @@ The landing page comes from the team's design and is plain Blade, CSS and JavaSc
 |---|---|
 | Phone, address, opening hours, legal name, licence | `laravel/config/pharmacy.php`; the `[bracketed]` values are the design's placeholders |
 | Page markup | `laravel/resources/views/home.blade.php`, inside `layouts/site.blade.php` |
+| Header and footer of every page | `laravel/resources/views/partials/`; the footer carries the EU online-pharmacy logo and authorisation that Spain requires on every page of a site selling medicines (`[placeholders]` in `config/pharmacy.php`) |
 | Capsule illustration | `laravel/resources/views/components/capsule.blade.php`, animated by `laravel/public/js/site.js` |
 | Styles | `laravel/public/css/site.css` |
 | Font | Archivo, self-hosted in `laravel/public/fonts/archivo/` (SIL Open Font License, copy beside it) |
@@ -103,6 +104,37 @@ The landing page comes from the team's design and is plain Blade, CSS and JavaSc
 (`laravel/app/Support/OpeningHours.php`). The CSP blocks inline `style=""`, inline `<script>`,
 `on…=` handlers and files from other sites, so nothing on the page uses them;
 `laravel/tests/Feature/HomePageTest.php` fails if one creeps in.
+
+## The shop
+
+Medicines that don’t need a prescription, ordered online and collected at the counter (no delivery).
+It is a demo: orders are real rows, payments are simulated.
+
+| What | Where |
+|---|---|
+| Catalogue: 8 medicines, example prices | `laravel/database/seeders/MedicineSeeder.php`, applied on every deploy by the `migrate` service (`migrate --seed`) |
+| Pack limit, demo cards, `[placeholders]` | `laravel/config/shop.php` |
+| Basket: in the session, at most 2 packs of a medicine | `laravel/app/Support/Basket.php` |
+| Pages | `laravel/resources/views/shop/`, styles in `public/css/shop.css`, the card animation in `public/js/shop.js` |
+| Tests | `laravel/tests/Feature/ShopTest.php` |
+
+Before anything goes live, check every medicine on CIMA (only non-prescription medicines may be
+sold online) and copy each dose and warning from its package leaflet; the seeder's `[…]` texts
+are placeholders on purpose.
+
+What the pentest and the GRC work should know:
+
+- **No accounts:** only the browser session that placed an order can see it or pay for it. Anyone
+  else gets a 404, even with the order reference.
+- **Health answers** (age, pregnancy, other medicines, allergies) are encrypted in the database with
+  the APP_KEY (Laravel’s `encrypted` casts) and only stored with the customer’s consent.
+- **Simulated card payment:** only the two demo card numbers in `config/shop.php` are accepted, so a
+  real card is never used. Only the last 4 digits are stored, and card fields are never flashed back
+  into the session after a form error. The bank’s check uses a random code per payment shown on
+  the simulated phone; three wrong codes decline the payment. Card and code attempts are limited to
+  10 a minute per session, and the card fields have `autocomplete="off"` so browsers don’t offer
+  saved real cards.
+- Nginx allows 30 POSTs a minute per IP, so a shopping session fits under the limit.
 
 ## Database roles
 

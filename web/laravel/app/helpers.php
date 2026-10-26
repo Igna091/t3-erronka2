@@ -22,6 +22,16 @@ if (! function_exists('env_secret')) {
     }
 }
 
+if (! function_exists('euros')) {
+    /**
+     * A price in cents the way the site writes it: 195 becomes "€1.95".
+     */
+    function euros(int $cents): string
+    {
+        return '€'.number_format($cents / 100, 2);
+    }
+}
+
 if (! function_exists('versioned_asset')) {
     /**
      * URL of a file under public/ with its modification time appended, so browsers fetch it
