@@ -1,5 +1,7 @@
-# web01 stack (issue #18): Nginx -> PHP-FPM 8.5.12 running Laravel -> PostgreSQL 18.
-# Only nginx publishes ports; php and db sit on an internal network with no route out.
+# web01 stack (issue #18): Nginx -> PHP-FPM 8.5.12 running Laravel -> PostgreSQL 18, and the
+# Python mailer (#22) sending the site's emails to Mailpit.
+# Only nginx publishes ports to the network, plus Mailpit's demo inbox on 127.0.0.1. php, db and
+# the mailer sit on internal networks with no route out.
 # First run: bash scripts/dev-init.sh && docker compose up -d --build --wait   (see README.md)
 #
 # Images are pinned by digest. To bump one, change the tag and the digest together:
@@ -167,6 +169,81 @@ services:
       resources:
         limits: { cpus: "1.0", memory: 512M, pids: 100 }
 
+  # The Python mailer (#22): sends the emails the site queues in email_outbox. It logs in as the
+  # mailer role, which can read only the outbox's content and update its delivery columns, and
+  # sends over STARTTLS, trusting only the CA that signed Mailpit's certificate. Both its
+  # networks are internal: no route out.
+  mailer:
+    <<: *hardening
+    build:
+      context: ../python
+      target: runtime
+    image: guenaga-web-mailer:dev
+    environment:
+      DB_HOST: db
+      DB_PORT: "5432"
+      DB_DATABASE: guenaga
+      DB_USERNAME: mailer
+      DB_PASSWORD_FILE: /run/secrets/db_mailer_password
+      MAIL_HOST: mailpit
+      MAIL_PORT: "1025"
+      MAIL_SCHEME: smtp
+      MAIL_CA_FILE: /run/secrets/mail_ca_crt
+      MAIL_USERNAME: mailer
+      MAIL_PASSWORD_FILE: /run/secrets/mail_password
+      MAIL_FROM_ADDRESS: no-reply@guenaga.eus
+      MAIL_FROM_NAME: Guenaga Farmazeutika
+      MAILER_POLL_SECONDS: "5"
+      LOG_LEVEL: info
+    tmpfs:
+      - /tmp
+    secrets: [db_mailer_password, mail_ca_crt, mail_password]
+    networks: [backend, mail]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      mailpit:
+        condition: service_healthy
+    healthcheck:
+      <<: *healthcheck
+      test: ["CMD", "python", "-m", "mailer.heartbeat"]
+    deploy:
+      resources:
+        limits: { cpus: "0.25", memory: 128M, pids: 20 }
+
+  # Demo only: catches every email instead of delivering it, and shows them at
+  # http://localhost:8025. Its SMTP port is reachable only from the mailer, over STARTTLS and
+  # with the password in secrets/mailpit_auth. Third-party image (axllent/mailpit), not a
+  # Docker Official Image.
+  mailpit:
+    <<: *hardening
+    image: axllent/mailpit:v1.32.0@sha256:0790692be935ea4420d085694f7985b1f692ca6a8771ab0e0bd8ba75ac180498
+    user: "65534:65534"
+    ports:
+      - "127.0.0.1:${MAILPIT_PORT:-8025}:8025"
+    environment:
+      MP_SMTP_TLS_CERT: /run/secrets/mailpit_crt
+      MP_SMTP_TLS_KEY: /run/secrets/mailpit_key
+      MP_SMTP_REQUIRE_STARTTLS: "true"
+      MP_SMTP_AUTH_FILE: /run/secrets/mailpit_auth
+      MP_SMTP_DISABLE_RDNS: "true"
+      # mail_inbox gives Mailpit a route out, so its own outbound features stay off
+      MP_DISABLE_VERSION_CHECK: "true"
+      MP_BLOCK_REMOTE_CSS_AND_FONTS: "true"
+      # Against DNS rebinding: the inbox answers only to these Host headers
+      MP_ALLOWED_HOSTS: localhost:${MAILPIT_PORT:-8025},127.0.0.1:${MAILPIT_PORT:-8025}
+    tmpfs:
+      # Mailpit keeps the emails in a temporary database here, so a restart empties the inbox
+      - /tmp
+    secrets: [mailpit_crt, mailpit_key, mailpit_auth]
+    networks: [mail, mail_inbox]
+    healthcheck:
+      <<: *healthcheck
+      test: ["CMD", "/mailpit", "readyz"]
+    deploy:
+      resources:
+        limits: { cpus: "0.25", memory: 128M, pids: 50 }
+
 networks:
   frontend: {}
   backend:
@@ -175,12 +252,17 @@ networks:
       config:
         # db/pg_hba.conf only accepts the stack's roles from this subnet; keep them in sync
         - subnet: 172.30.10.0/24
+  # The mailer and Mailpit only, so Mailpit can't reach db or php
+  mail:
+    internal: true
+  # Only for publishing Mailpit's inbox port: Docker can't publish ports from internal networks
+  mail_inbox: {}
 
 volumes:
   dbdata: {}
   uploads: {}
 
-# Created by scripts/dev-init.sh; on web01 the TLS pair comes from the Infra TLS CA (#10)
+# Created by scripts/dev-init.sh; on web01 the certificates come from the Infra TLS CA (#10)
 secrets:
   app_key:
     file: ./secrets/app_key
@@ -196,3 +278,13 @@ secrets:
     file: ./secrets/tls.crt
   tls_key:
     file: ./secrets/tls.key
+  mail_password:
+    file: ./secrets/mail_password
+  mail_ca_crt:
+    file: ./secrets/mail_ca.crt
+  mailpit_crt:
+    file: ./secrets/mailpit.crt
+  mailpit_key:
+    file: ./secrets/mailpit.key
+  mailpit_auth:
+    file: ./secrets/mailpit_auth

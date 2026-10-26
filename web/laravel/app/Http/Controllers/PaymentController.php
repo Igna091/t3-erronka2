@@ -7,6 +7,7 @@ use App\Models\Order;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 /**
  * The simulated card payment: the card form, the bank's one-time code, then approved or
@@ -92,7 +93,10 @@ class PaymentController extends Controller
         }
 
         $request->session()->forget($key);
-        $order->update(['payment_status' => 'paid', 'card_last4' => $check['last4']]);
+        DB::transaction(function () use ($order, $check) {
+            $order->update(['payment_status' => 'paid', 'card_last4' => $check['last4']]);
+            $order->queueConfirmationEmail();
+        });
 
         return redirect()->route('payment.show', $order)
             ->with('payment_result', ['step' => 'approved', 'last4' => $check['last4']]);
@@ -107,7 +111,10 @@ class PaymentController extends Controller
 
         if ($this->payable($order)) {
             $request->session()->forget($this->checkKey($order));
-            $order->update(['payment_method' => 'counter', 'payment_status' => 'at_counter']);
+            DB::transaction(function () use ($order) {
+                $order->update(['payment_method' => 'counter', 'payment_status' => 'at_counter']);
+                $order->queueConfirmationEmail();
+            });
         }
 
         return redirect()->route('orders.show', $order);

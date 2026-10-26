@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\OpeningHours;
 use Illuminate\Contracts\Session\Session;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -48,6 +49,52 @@ class Order extends Model
     public function items(): HasMany
     {
         return $this->hasMany(OrderItem::class);
+    }
+
+    public function outboxEmails(): HasMany
+    {
+        return $this->hasMany(OutboxEmail::class);
+    }
+
+    /**
+     * Queues the confirmation email for the Python mailer once the order is settled: paid by
+     * card, or to be paid at the counter. Call it in the transaction that settles the order, so
+     * the email exists exactly when the change does. Asking twice still queues one email.
+     */
+    public function queueConfirmationEmail(): void
+    {
+        $this->outboxEmails()->firstOrCreate(['kind' => 'order_confirmation'], ['payload' => $this->confirmationEmail()]);
+    }
+
+    /**
+     * What the confirmation email shows, and nothing more: the health answers stay encrypted
+     * in the order, and the mailer can't read the orders table.
+     *
+     * @return array<string, mixed>
+     */
+    public function confirmationEmail(): array
+    {
+        return [
+            'to' => ['name' => $this->customer_name, 'email' => $this->email],
+            'reference' => $this->reference,
+            'placed_at' => $this->created_at->copy()->setTimezone(config('pharmacy.timezone'))->toIso8601String(),
+            'phone' => $this->phone,
+            'items' => $this->items()->orderBy('id')->get()->map(fn (OrderItem $item) => [
+                'name' => $item->name,
+                'quantity' => $item->quantity,
+                'line_cents' => $item->unit_price_cents * $item->quantity,
+            ])->all(),
+            'total_cents' => $this->total_cents,
+            'payment' => ['status' => $this->payment_status, 'card_last4' => $this->card_last4],
+            'ready_within' => config('shop.ready_within'),
+            'pharmacy' => [
+                'name' => config('app.name'),
+                'address' => config('pharmacy.address'),
+                'phone' => config('pharmacy.phone'),
+                'hours' => OpeningHours::fromConfig()->summary(),
+            ],
+            'site_url' => config('app.url'),
+        ];
     }
 
     public function grantTo(Session $session): void

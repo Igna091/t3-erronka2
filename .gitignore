@@ -12,6 +12,10 @@
 # Machine-specific secrets for the web stack, created by web/scripts/dev-init.sh
 web/secrets/
 
+# Python bytecode and test caches, for anyone running the mailer's tests outside Docker
+__pycache__/
+.pytest_cache/
+
 # OS clutter
 .DS_Store
 Thumbs.db

@@ -1,0 +1,42 @@
+Hello {{ to.name }},
+
+Thank you for your order. Here are the details, to have at hand when you collect it.
+
+ORDER {{ reference }}
+Placed on {{ placed_at | long_date }}
+
+{% for item in items %}
+- {{ item.name }} × {{ item.quantity }}: {{ item.line_cents | euros }}
+{% endfor %}
+- Collection at the pharmacy: free
+Total: {{ total_cents | euros }}
+
+{% if payment.status == "paid" %}
+Paid by card ending {{ payment.card_last4 }}. It was a demo card, so nothing was charged.
+{% else %}
+You pay {{ total_cents | euros }} at the counter when you collect it, cash or card.
+{% endif %}
+
+WHAT HAPPENS NEXT
+1. A pharmacist checks your order.
+2. We text you at {{ phone }} when it's ready, usually within {{ ready_within }}.
+3. You collect it at the counter: tell us the reference {{ reference }}.
+
+If the pharmacist decides a medicine isn't right for the person taking it, we call you
+before preparing the order, and you don't pay for it.
+
+COLLECT IT AT
+{{ pharmacy.name }}
+{% for line in pharmacy.address %}
+{{ line }}
+{% endfor %}
+Phone {{ pharmacy.phone.display }}
+{% for days, times in pharmacy.hours %}
+{{ days }}: {{ times }}
+{% endfor %}
+
+--
+Demo shop: prices, orders and payments are simulated. Nothing is charged and no medicine
+is sent.
+This email was sent automatically about an order placed at {{ site_url }}. Replies aren't
+read: call us on {{ pharmacy.phone.display }} with any questions.

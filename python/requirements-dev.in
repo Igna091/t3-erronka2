@@ -1,0 +1,3 @@
+# Test tools, only in the image's dev stage. Regenerate requirements-dev.txt as README.md shows.
+-c requirements.txt
+pytest==9.1.1
