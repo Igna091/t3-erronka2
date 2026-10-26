@@ -87,6 +87,23 @@ shell out (`about`, `schedule:run`, `db`) fail inside the runtime container. Run
 | `laravel/` | The Laravel application; the schema lives in `laravel/database/migrations` |
 | `scripts/dev-init.sh` | Creates `secrets/` |
 
+## The public site
+
+The landing page comes from the team's design and is plain Blade, CSS and JavaScript, with no build step:
+
+| What | Where |
+|---|---|
+| Phone, address, opening hours, legal name, licence | `laravel/config/pharmacy.php`; the `[bracketed]` values are the design's placeholders |
+| Page markup | `laravel/resources/views/home.blade.php`, inside `layouts/site.blade.php` |
+| Capsule illustration | `laravel/resources/views/components/capsule.blade.php`, animated by `laravel/public/js/site.js` |
+| Styles | `laravel/public/css/site.css` |
+| Font | Archivo, self-hosted in `laravel/public/fonts/archivo/` (SIL Open Font License, copy beside it) |
+
+"Open now" and "Open until" are worked out from `pharmacy.hours` in Madrid time
+(`laravel/app/Support/OpeningHours.php`). The CSP blocks inline `style=""`, inline `<script>`,
+`on…=` handlers and files from other sites, so nothing on the page uses them;
+`laravel/tests/Feature/HomePageTest.php` fails if one creeps in.
+
 ## Database roles
 
 | Role | Can do | Used by |
@@ -106,7 +123,7 @@ shell out (`about`, `schedule:run`, `db`) fail inside the runtime container. Run
 
 ## Next
 
-- **#19:** build the site and client portal in `laravel/`. Laravel Fortify (`composer require laravel/fortify`) provides login, registration, password reset, login throttling and TOTP two-factor without a JavaScript build. Store photos on the private `local` disk and serve them through an authorised route. Use a self-hosted CAPTCHA, since php has no route to the internet; `gd` with FreeType is in the image.
+- **#19:** the landing page is done; next is the client portal in `laravel/`, which the "Send a prescription" buttons should point to (they jump to "How a refill works" for now). Laravel Fortify (`composer require laravel/fortify`) provides login, registration, password reset, login throttling and TOTP two-factor without a JavaScript build. Store photos on the private `local` disk and serve them through an authorised route. Use a self-hosted CAPTCHA, since php has no route to the internet; `gd` with FreeType is in the image.
 - **#20:** add ModSecurity with the OWASP CRS, for example by swapping Nginx for `owasp/modsecurity-crs:nginx`, which also runs unprivileged on 8080/8443. It is OWASP's image rather than a Docker Official Image, so record that exception. Save the `testssl.sh` and header results in `evidence/`.
 - **#21:** if the site adds Vite assets, CI builds them and Nginx must get `public/build` from the image instead of the bind mount.
 - **#22:** the mailer container joins the backend network as the `mailer` role, with Mailpit alongside it for the demo.
