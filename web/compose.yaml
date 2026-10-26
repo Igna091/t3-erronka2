@@ -216,10 +216,16 @@ services:
   # http://localhost:8025. Its SMTP port is reachable only from the mailer, over STARTTLS and
   # with the password in secrets/mailpit_auth. Third-party image (axllent/mailpit), not a
   # Docker Official Image.
+  # When secrets/mailpit_forward.yaml isn't empty, Mailpit also forwards a copy of every email
+  # to the one inbox named there (README.md), never to the address typed at checkout.
   mailpit:
     <<: *hardening
     image: axllent/mailpit:v1.32.0@sha256:0790692be935ea4420d085694f7985b1f692ca6a8771ab0e0bd8ba75ac180498
     user: "65534:65534"
+    entrypoint:
+      - /bin/sh
+      - -c
+      - if [ -s /run/secrets/mailpit_forward ]; then export MP_SMTP_FORWARD_CONFIG=/run/secrets/mailpit_forward; fi; exec /mailpit
     ports:
       - "127.0.0.1:${MAILPIT_PORT:-8025}:8025"
     environment:
@@ -228,7 +234,8 @@ services:
       MP_SMTP_REQUIRE_STARTTLS: "true"
       MP_SMTP_AUTH_FILE: /run/secrets/mailpit_auth
       MP_SMTP_DISABLE_RDNS: "true"
-      # mail_inbox gives Mailpit a route out, so its own outbound features stay off
+      # mail_inbox gives Mailpit a route out, used only for the forwarding above; its other
+      # outbound features stay off
       MP_DISABLE_VERSION_CHECK: "true"
       MP_BLOCK_REMOTE_CSS_AND_FONTS: "true"
       # Against DNS rebinding: the inbox answers only to these Host headers
@@ -236,7 +243,7 @@ services:
     tmpfs:
       # Mailpit keeps the emails in a temporary database here, so a restart empties the inbox
       - /tmp
-    secrets: [mailpit_crt, mailpit_key, mailpit_auth]
+    secrets: [mailpit_crt, mailpit_key, mailpit_auth, mailpit_forward]
     networks: [mail, mail_inbox]
     healthcheck:
       <<: *healthcheck
@@ -289,3 +296,5 @@ secrets:
     file: ./secrets/mailpit.key
   mailpit_auth:
     file: ./secrets/mailpit_auth
+  mailpit_forward:
+    file: ./secrets/mailpit_forward.yaml

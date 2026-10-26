@@ -37,6 +37,24 @@ docker compose up -d --build --wait
 Open https://localhost and accept the self-signed certificate. The emails the shop sends arrive
 in Mailpit at http://localhost:8025. Mailpit keeps them in memory, so restarting it empties the inbox.
 
+To also see them in a real inbox, as Gmail shows them, fill in `secrets/mailpit_forward.yaml`
+(created empty by `dev-init.sh`) and run `docker compose up -d mailpit`. Mailpit then forwards a copy
+of every email to that one address, whatever address was typed at checkout, so nobody else ever
+gets one. The team's account and its app password are in the password manager:
+
+```yaml
+to: zibereibar@gmail.com
+host: smtp.gmail.com
+port: 587
+starttls: true
+auth: plain
+username: zibereibar@gmail.com
+password: '<Gmail app password>'
+override-from: zibereibar@gmail.com   # Gmail only sends as the account itself
+```
+
+Empty the file again to stop forwarding.
+
 - **Reset the database:** `docker compose down -v` deletes the data and the uploads, so `db/init` runs again on the next start.
 - **Ports 80/443 taken:** set `HTTP_PORT` and `HTTPS_PORT` (PowerShell: `$env:HTTPS_PORT=8443`), then browse to https://localhost:8443 directly, because the HTTP redirect always points at 443. Mailpit's port is `MAILPIT_PORT`.
 - **After pulling a change that adds secrets:** run `scripts/dev-init.sh` again; it only creates what's missing.
@@ -178,8 +196,9 @@ Deploy workflow; [DEPLOY.md](DEPLOY.md) has the set-up, rollback and disaster re
 5. Mail: for the demo, Mailpit stays, and its inbox is reached through an SSH tunnel
    (`ssh -L 8025:127.0.0.1:8025 web01`). Its certificate (`secrets/mailpit.crt` and `.key`, for the
    name `mailpit`) can come from the Infra TLS CA, with that CA's certificate in
-   `secrets/mail_ca.crt`. To deliver real email, point the mailer's `MAIL_*` settings at the relay
-   (with its CA, or none for a public one) and remove `mailpit`.
+   `secrets/mail_ca.crt`. Forwarding to a real inbox (above) also needs web01's firewall to let
+   Mailpit out to `smtp.gmail.com:587`. To deliver real email, point the mailer's `MAIL_*` settings
+   at the relay (with its CA, or none for a public one) and remove `mailpit`.
 
 ## Next
 

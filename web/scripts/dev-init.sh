@@ -78,6 +78,13 @@ EOF
     echo "created secrets/mailpit.crt and secrets/mailpit.key, signed by secrets/mail_ca.crt (90 days)"
 fi
 
+# Where Mailpit forwards a copy of every email: empty means nowhere. To see the emails in a real
+# inbox, fill it in as README.md shows.
+if [[ ! -e secrets/mailpit_forward.yaml ]]; then
+    : > secrets/mailpit_forward.yaml
+    echo "created secrets/mailpit_forward.yaml (empty: Mailpit forwards nothing)"
+fi
+
 # The containers run as other users (nginx 101, www-data 82, postgres 999, mailer 10001,
 # Mailpit 65534) and must read these.
 # Fine for throwaway dev secrets; on web01 grant read access per file instead (see README.md).
