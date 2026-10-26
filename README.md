@@ -15,7 +15,7 @@ t3-erronka2/
 ├── vpn/            IPsec and OpenVPN settings, test evidence
 ├── docker/         daemon.json baseline, docker-bench results per host
 ├── web/            Laravel app, Dockerfile, compose.yaml, nginx, php.ini, PostgreSQL roles
-├── python/         users-without-image mailer + Dockerfile
+├── python/         the mailer (order emails), Dockerfile and tests
 ├── hardening/      baselines, GPO exports, backup scripts
 ├── monitoring/     Wazuh compose file, rules and decoders
 ├── ot/             PLC programs, SCADA config, honeypot compose file
@@ -28,10 +28,12 @@ t3-erronka2/
 
 - No private key, password or `.env` file is ever committed. `.gitignore` blocks
   `*.key`, `*.pem`, `*.p12`, `*.pfx`, `*.kdbx` and `.env`; public certificates go in as `.crt`.
-- Changes reach `main` through a pull request with one review.
+- Changes reach `main` through a pull request with one review, once CI passes:
+  checks, static analysis, tests and image scans ([web/DEPLOY.md](web/DEPLOY.md)).
 - Text files use LF line endings (`.gitattributes`), so scripts work inside Linux
   containers even when the repo is cloned on Windows.
 
 ## Start here
 
 [web/README.md](web/README.md) runs the website stack (Nginx, Laravel on PHP 8.5.12, PostgreSQL) on any machine with Docker.
+[web/DEPLOY.md](web/DEPLOY.md) explains CI/CD: how a change is checked, released to web01 and rolled back.

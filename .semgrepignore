@@ -1,0 +1,8 @@
+# Paths Semgrep (CI, .github/workflows/ci.yml) doesn't scan: other people's code and generated files.
+# Our own tests are scanned too.
+web/laravel/vendor/
+web/laravel/storage/
+web/laravel/bootstrap/cache/
+web/laravel/public/fonts/
+web/secrets/
+**/__pycache__/

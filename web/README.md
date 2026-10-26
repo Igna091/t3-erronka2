@@ -11,8 +11,8 @@ WAN :80/:443 ──► nginx ──► php-fpm 8.5.12 (Laravel) ──► Postgr
 | Service | Image | Runs as | Networks | Role |
 |---|---|---|---|---|
 | nginx | `nginx:1.30.6` | nginx (101) | frontend, backend | Only service publishing ports. TLS 1.2/1.3, security headers, POST rate limit, runs nothing but Laravel's `public/index.php` |
-| php | built from `php/Dockerfile` (`runtime` stage) | www-data (33) | backend | Laravel with `vendor/` baked in; no Composer in the image |
-| migrate | same image | www-data (33) | backend | One-shot `php artisan migrate` as the `migrator` role, then exits; php starts only after it succeeds |
+| php | built from `php/Dockerfile` (`runtime` stage, on PHP's official Alpine image) | www-data (82) | backend | Laravel with `vendor/` baked in; no Composer and no compiler in the image |
+| migrate | same image | www-data (82) | backend | One-shot `php artisan migrate` as the `migrator` role, then exits; php starts only after it succeeds |
 | db | `postgres:18.6-trixie` | postgres (999) | backend | Accepts only the stack's roles, only from the backend subnet |
 | mailer | built from [../python/Dockerfile](../python/Dockerfile) (`runtime` stage) | mailer (10001) | backend, mail | Sends the emails the site queues, over STARTTLS ([../python/README.md](../python/README.md)) |
 | mailpit | `axllent/mailpit:v1.32.0` | nobody (65534) | mail, mail_inbox | Demo only: catches every email and shows it at http://localhost:8025, published on 127.0.0.1 only. Third-party image, not a Docker Official Image |
@@ -37,6 +37,24 @@ docker compose up -d --build --wait
 Open https://localhost and accept the self-signed certificate. The emails the shop sends arrive
 in Mailpit at http://localhost:8025. Mailpit keeps them in memory, so restarting it empties the inbox.
 
+To also see them in a real inbox, as Gmail shows them, fill in `secrets/mailpit_forward.yaml`
+(created empty by `dev-init.sh`) and run `docker compose up -d mailpit`. Mailpit then forwards a copy
+of every email to that one address, whatever address was typed at checkout, so nobody else ever
+gets one. The team's account and its app password are in the password manager:
+
+```yaml
+to: zibereibar@gmail.com
+host: smtp.gmail.com
+port: 587
+starttls: true
+auth: plain
+username: zibereibar@gmail.com
+password: '<Gmail app password>'
+override-from: zibereibar@gmail.com   # Gmail only sends as the account itself
+```
+
+Empty the file again to stop forwarding.
+
 - **Reset the database:** `docker compose down -v` deletes the data and the uploads, so `db/init` runs again on the next start.
 - **Ports 80/443 taken:** set `HTTP_PORT` and `HTTPS_PORT` (PowerShell: `$env:HTTPS_PORT=8443`), then browse to https://localhost:8443 directly, because the HTTP redirect always points at 443. Mailpit's port is `MAILPIT_PORT`.
 - **After pulling a change that adds secrets:** run `scripts/dev-init.sh` again; it only creates what's missing.
@@ -50,6 +68,7 @@ docker compose -f compose.yaml -f compose.dev.yaml up -d --build --wait   # code
 docker compose -f compose.yaml -f compose.dev.yaml run --rm tools composer require laravel/fortify
 docker compose -f compose.yaml -f compose.dev.yaml run --rm tools php artisan make:controller ProfileController
 docker compose -f compose.yaml -f compose.dev.yaml run --rm tools php vendor/bin/phpunit
+docker compose -f compose.yaml -f compose.dev.yaml run --rm tools php vendor/bin/phpstan     # static analysis, level 8
 docker compose -f compose.yaml -f compose.dev.yaml run --rm mailer-tests   # the mailer's tests (Python)
 docker compose run --rm migrate                                   # apply new migrations
 docker compose run --rm migrate php artisan migrate:fresh --force # dev only: drop and recreate every table
@@ -99,6 +118,9 @@ shell out (`about`, `schedule:run`, `db`) fail inside the runtime container. Run
 | `laravel/` | The Laravel application; the schema lives in `laravel/database/migrations` |
 | `../python/` | The mailer: its code, tests and Dockerfile |
 | `scripts/dev-init.sh` | Creates `secrets/`, including Mailpit's certificate and the throwaway CA the mailer trusts |
+| `scripts/deploy.sh` | Deploys a release on web01, or rolls back; installed there as `guenaga-deploy` ([DEPLOY.md](DEPLOY.md)) |
+| `DEPLOY.md` | CI/CD: checks, image scans, GHCR, deploying, rollback and disaster recovery |
+| `../.github/workflows/` | The CI, Deploy and Rollback workflows |
 
 ## The public site
 
@@ -164,21 +186,24 @@ What the pentest and the GRC work should know:
 
 ## Moving to web01
 
+web01 runs the images CI builds, scans and pushes to GHCR, deployed from release tags by the
+Deploy workflow; [DEPLOY.md](DEPLOY.md) has the set-up, rollback and disaster recovery. Before the first deploy:
+
 1. Apply the host baseline in [docker/README.md](../docker/README.md).
 2. Put the Infra TLS CA certificate and key for `www.guenaga.eus` (#10) in `secrets/tls.crt` and `secrets/tls.key`, then run `scripts/dev-init.sh`. It keeps existing files and only creates the key and passwords.
 3. Lock the folder: as root, `chmod 700 secrets` and leave the files `0644`. Host users can't open the folder, but Docker bind-mounts each file on its own, so the containers can still read them, including under `userns-remap`.
-4. Set `APP_URL=https://www.guenaga.eus` and `server_name www.guenaga.eus;` in `nginx/nginx.conf`.
+4. Put `APP_URL=https://www.guenaga.eus` in `web/.env`. web01's own settings go there and in `secrets/`, both ignored by git; tracked files stay as they are in the release, or the deploy refuses to run. Nginx answers for any name (`server_name _`), so it needs no change.
 5. Mail: for the demo, Mailpit stays, and its inbox is reached through an SSH tunnel
    (`ssh -L 8025:127.0.0.1:8025 web01`). Its certificate (`secrets/mailpit.crt` and `.key`, for the
    name `mailpit`) can come from the Infra TLS CA, with that CA's certificate in
-   `secrets/mail_ca.crt`. To deliver real email, point the mailer's `MAIL_*` settings at the relay
-   (with its CA, or none for a public one) and remove `mailpit`.
-6. Once CI/CD lands (#21), web01 pulls the PHP and mailer images from GHCR instead of building them.
+   `secrets/mail_ca.crt`. Forwarding to a real inbox (above) also needs web01's firewall to let
+   Mailpit out to `smtp.gmail.com:587`. To deliver real email, point the mailer's `MAIL_*` settings
+   at the relay (with its CA, or none for a public one) and remove `mailpit`.
 
 ## Next
 
 - **#19:** the landing page is done; next is the client portal in `laravel/`, which the "Send a prescription" buttons should point to (they jump to "How a refill works" for now). Laravel Fortify (`composer require laravel/fortify`) provides login, registration, password reset, login throttling and TOTP two-factor without a JavaScript build. Store photos on the private `local` disk and serve them through an authorised route. Use a self-hosted CAPTCHA, since php has no route to the internet; `gd` with FreeType is in the image.
 - **#20:** add ModSecurity with the OWASP CRS, for example by swapping Nginx for `owasp/modsecurity-crs:nginx`, which also runs unprivileged on 8080/8443. It is OWASP's image rather than a Docker Official Image, so record that exception. Save the `testssl.sh` and header results in `evidence/`.
-- **#21:** if the site adds Vite assets, CI builds them and Nginx must get `public/build` from the image instead of the bind mount.
+- **#21:** CI/CD is in place ([DEPLOY.md](DEPLOY.md)); what's left is setting up the runner in U1-IT and web01, then testing a deploy and a rollback for the evidence. If the site ever adds Vite assets, CI must build them and Nginx must get `public/build` from the image instead of the bind mount.
 - **#22:** the mailer sends the order emails. The brief's reminder to users without a profile image
   needs the client portal's accounts first; [../python/README.md](../python/README.md) has the plan.

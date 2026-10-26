@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests;
 
+use App\Models\Order;
 use Closure;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Support\Carbon;
@@ -18,7 +19,9 @@ class CardPaymentRequest extends FormRequest
      */
     public function authorize(): bool
     {
-        return $this->route('order')->isOwnedBy($this->session());
+        $order = $this->route('order');
+
+        return $order instanceof Order && $order->isOwnedBy($this->session());
     }
 
     /**
@@ -80,7 +83,9 @@ class CardPaymentRequest extends FormRequest
     {
         [$month, $year] = explode('/', $value);
 
-        if (Carbon::create(2000 + (int) $year, (int) $month)->endOfMonth()->isPast()) {
+        $expiry = Carbon::create(2000 + (int) $year, (int) $month);
+
+        if ($expiry === null || $expiry->endOfMonth()->isPast()) {
             $fail('That card has expired.');
         }
     }

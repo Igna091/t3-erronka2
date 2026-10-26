@@ -8,12 +8,13 @@ if (! function_exists('env_secret')) {
      */
     function env_secret(string $name, ?string $default = null): ?string
     {
-        $value = env($name);
-        if ($value !== null && $value !== '') {
+        // Called only from config/, so it is cached along with the rest of the configuration
+        $value = env($name); // @phpstan-ignore larastan.noEnvCallsOutsideOfConfig
+        if (is_string($value) && $value !== '') {
             return $value;
         }
 
-        $file = env($name.'_FILE');
+        $file = env($name.'_FILE'); // @phpstan-ignore larastan.noEnvCallsOutsideOfConfig
         if (is_string($file) && is_readable($file)) {
             return trim((string) file_get_contents($file));
         }
