@@ -3,48 +3,7 @@
 @section('description', 'Send your prescription online and pick it up at the counter without waiting in line.')
 
 @section('content')
-    <a class="skip-link" href="#main">Skip to content</a>
-
-    <header class="site-header wrap">
-        <a class="brand" href="#top">
-            <svg width="34" height="18" viewBox="0 0 34 18" aria-hidden="true"><rect x="1" y="2" width="20" height="14" rx="7" fill="#F2C94C"/><path d="M15 1h10a8 8 0 0 1 0 16H15z" fill="#2A4BD7"/></svg>
-            {{ config('app.name') }}
-        </a>
-
-        <nav class="site-nav" aria-label="Main">
-            <a href="#refills">Prescriptions</a>
-            <a href="#services">Services</a>
-            <a href="#dose-packs">Dose packs</a>
-            <a href="#visit">Visit us</a>
-        </nav>
-
-        <div class="header-actions">
-            <p @class(['status', 'is-closed' => ! $status['open']])>
-                <svg class="cross" width="16" height="16" viewBox="0 0 18 18" aria-hidden="true"><path d="M6 0h6v6h6v6h-6v6H6v-6H0V6h6z" fill="currentColor"/></svg>
-                @if ($status['open'])
-                    Open until {{ $status['closes'] }}
-                @elseif ($status['opens'])
-                    Opens {{ $status['opens'] }}
-                @else
-                    Closed
-                @endif
-            </p>
-            <a class="btn btn--primary btn--small header-cta" href="#refills">Send a prescription</a>
-        </div>
-
-        {{-- Phone menu: a native disclosure, so it opens without JavaScript --}}
-        <details class="menu">
-            <summary class="menu-button" aria-label="Menu">
-                <svg width="20" height="14" viewBox="0 0 20 14" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M1 2h18M1 12h18"/></svg>
-            </summary>
-            <nav class="menu-panel" aria-label="Main">
-                <a href="#refills">Prescriptions</a>
-                <a href="#services">Services</a>
-                <a href="#dose-packs">Dose packs</a>
-                <a href="#visit">Visit us</a>
-            </nav>
-        </details>
-    </header>
+    @include('partials.header')
 
     <main id="main">
         {{-- Wide screens: the text scrolls on the left while one capsule stays pinned on the right and
@@ -182,12 +141,5 @@
         </section>
     </main>
 
-    <footer class="site-footer wrap">
-        <p>{{ config('pharmacy.legal_name') }}. Licence no. {{ config('pharmacy.licence') }}.</p>
-        <nav class="legal-nav" aria-label="Legal">
-            <a href="#top">Privacy</a>
-            <a href="#top">Cookies</a>
-            <a href="#top">Accessibility</a>
-        </nav>
-    </footer>
+    @include('partials.footer')
 @endsection
