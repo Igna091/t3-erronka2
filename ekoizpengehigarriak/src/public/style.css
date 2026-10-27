@@ -1,0 +1,217 @@
+body {
+background: aliceblue url("background.png") center;
+background-repeat: repeat-y;
+margin: 0px;
+}
+
+h1 {
+font-family: arial;
+font-size: 36px;
+color: maroon;
+margin: 0px;
+}
+
+h2 {
+font-family: arial;
+font-size: 20px;
+color: black;
+margin: 0px;
+}
+
+h3 {
+font-family: arial;
+font-size: 16px;
+margin: 0px;
+}
+
+h4 {
+font-family: arial;
+font-size: 16px;
+color: maroon;
+margin: 0px;
+}
+
+h5 {
+font-family: arial;
+font-size: 16px;
+color: maroon;
+margin: 0px;
+}
+
+hr {
+background-color: black;
+border-width: 0px;
+}
+
+input, button {
+background-color: lightblue;
+color: black;
+border-style: solid;
+border-color: maroon;
+border-width: 1px;
+}
+
+textarea {
+background-color: lightblue;
+border-color: maroon;
+border-style: solid;
+border-width: 1px;
+}
+
+fieldset {
+background-color: aliceblue;
+border-color: maroon;
+border-style: solid;
+border-width: 1px;
+}
+
+legend {
+font-family: arial;
+color: maroon;
+background-color: aliceblue;
+border-color: maroon;
+border-style: solid;
+border-width: 1px 1px 0px 1px;
+}
+
+a {
+text-decoration: none;
+color: maroon;
+}
+
+a:hover {
+text-decoration: underline;
+color: black;
+}
+
+img {
+border-color: maroon;
+border-style: solid;
+}
+
+img:hover {
+border-color: maroon;
+border-style: solid;
+}
+
+.box {
+border-width: 0px;
+background-color: lightblue;
+}
+.content {
+    text-align: center;
+    width: 500px;
+}
+.register {
+    margin: 0 0 10px 40px;
+    text-align: left;
+}
+.register h2 {padding:0px 0px 7px 0px; color:#3B1C00; border-bottom:1px dashed #3B1C00; margin-bottom: 5px;}
+
+.register form label {width:120px;}
+.register form input {width:200px;}
+.register form p {padding-top:5px;}
+
+/* What used to be HTML attributes and style="" in the pages: the Content Security Policy
+   blocks inline styles, so they live here */
+
+.center {
+    text-align: center;
+}
+.center table {
+    margin: 0 auto;
+}
+table.banner {
+    border-spacing: 5px;
+}
+table.banner td {
+    padding: 5px;
+}
+hr.rule {
+    width: 1000px;
+    height: 5px;
+}
+fieldset.narrow {
+    width: 300px;
+    margin: 0 auto;
+}
+fieldset.narrow-500 {
+    width: 500px;
+    margin: 0 auto;
+}
+table.catalogue, table.account {
+    width: 1000px;
+    margin: 0 auto;
+    border-spacing: 10px;
+}
+table.catalogue td, table.account td {
+    padding: 10px;
+    vertical-align: top;
+}
+td.picture {
+    width: 40%;
+    text-align: center;
+}
+td.details {
+    width: 60%;
+    text-align: left;
+}
+td.left {
+    text-align: left;
+}
+td.right {
+    text-align: right;
+}
+table.users {
+    width: 100%;
+    border-spacing: 2px;
+}
+table.users td {
+    padding: 2px;
+    text-align: left;
+}
+table.users td.action {
+    width: 60px;
+    text-align: right;
+}
+textarea[readonly] {
+    background-color: white;
+}
+img.photo {
+    max-width: 200px;
+}
+
+/* A form that sits in a line of links, and its button drawn as one */
+form.inline {
+    display: inline;
+}
+button.link {
+    background: none;
+    border: 0;
+    padding: 0;
+    color: maroon;
+    font: inherit;
+    cursor: pointer;
+}
+button.link:hover {
+    text-decoration: underline;
+    color: black;
+}
+
+.error {
+    color: #b00020;
+    font-weight: bold;
+}
+.flash {
+    width: 600px;
+    margin: 0 auto 12px;
+    padding: 8px;
+    border: 1px solid maroon;
+    font-family: arial;
+}
+.flash-ok {
+    background-color: #e3f4e3;
+}
+.flash-error {
+    background-color: #fbe3e3;
+}

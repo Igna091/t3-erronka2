@@ -1,0 +1,7 @@
+# Static analysis of the app and its tests, at PHPStan's strictest common level (README.md)
+parameters:
+    level: 8
+    paths:
+        - src
+        - tests
+    tmpDir: /tmp/phpstan

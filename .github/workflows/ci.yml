@@ -71,6 +71,30 @@ jobs:
       - name: Known vulnerabilities in the Python dependencies (any severity)
         run: docker run --rm --volume "$GITHUB_WORKSPACE/python:/src:ro" "$TRIVY_IMAGE" fs --quiet --scanners vuln --exit-code 1 /src
 
+  ekoizpengehigarriak:
+    name: ekoizpengehigarriak (PHP app)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      # The app's own PHP (ekoizpengehigarriak/web/Dockerfile, dev stage: PHPUnit and PHPStan)
+      TOOLS: docker run --rm --volume ${{ github.workspace }}/ekoizpengehigarriak:/work:ro ekoizpen-tools
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Build the tools image
+        run: docker build --quiet --target dev --tag ekoizpen-tools --file ekoizpengehigarriak/web/Dockerfile ekoizpengehigarriak
+      - name: composer audit (known vulnerabilities in the test tools)
+        run: $TOOLS sh -c 'cd /opt/tools && composer audit --locked'
+      - name: php -l
+        run: $TOOLS sh -c 'find src tests -name "*.php" -print0 | xargs -0 -n 1 php -l > /dev/null'
+      - name: PHPStan (level 8)
+        run: $TOOLS phpstan analyse --no-progress --error-format=github
+      - name: Unit tests, without a network
+        run: docker run --rm --network none --volume "$GITHUB_WORKSPACE/ekoizpengehigarriak:/work:ro" ekoizpen-tools phpunit
+      - name: The runtime image builds
+        run: docker build --quiet --target runtime --tag ekoizpen-web --file ekoizpengehigarriak/web/Dockerfile ekoizpengehigarriak
+
   scripts:
     name: Scripts and workflows
     runs-on: ubuntu-24.04
@@ -80,7 +104,7 @@ jobs:
         with:
           persist-credentials: false
       - name: ShellCheck
-        run: shellcheck web/scripts/*.sh web/db/init/*.sh
+        run: shellcheck web/scripts/*.sh web/db/init/*.sh ekoizpengehigarriak/scripts/*.sh ekoizpengehigarriak/db/init/*.sh
       - name: actionlint (these workflows, and ShellCheck on their scripts)
         run: docker run --rm --volume "$GITHUB_WORKSPACE:/repo:ro" --workdir /repo "$ACTIONLINT_IMAGE" -no-color
       - name: The deploy script (deploy, rollback, refusals)

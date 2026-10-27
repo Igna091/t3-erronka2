@@ -12,6 +12,11 @@
 # Machine-specific secrets for the web stack, created by web/scripts/dev-init.sh
 web/secrets/
 
+# The same for the ekoizpengehigarriak app, created by its scripts/init-secrets.sh, and its
+# test tools if someone installs them outside Docker
+ekoizpengehigarriak/secrets/
+ekoizpengehigarriak/vendor/
+
 # Python bytecode and test caches, for anyone running the mailer's tests outside Docker
 __pycache__/
 .pytest_cache/
