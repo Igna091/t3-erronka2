@@ -1,0 +1,18 @@
+Hello {{ first_name }},
+
+{% include "security_alert/what.txt" %}
+
+When: {{ when | long_date }}
+Device: {{ device }}
+Internet address: {{ ip }}
+
+If this was you, there's nothing to do.
+
+If it wasn't you, someone may know your password. Change it now, log out everywhere else,
+and call us on {{ pharmacy.phone.display }}:
+
+{{ security_url }}
+
+--
+We always email about these changes, so you'd notice one you didn't make. This email was
+sent automatically by {{ site_url }}. Replies aren't read.

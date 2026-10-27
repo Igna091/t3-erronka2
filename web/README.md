@@ -34,8 +34,8 @@ bash scripts/dev-init.sh              # APP_KEY, passwords and dev certificates 
 docker compose up -d --build --wait
 ```
 
-Open https://localhost and accept the self-signed certificate. The emails the shop sends arrive
-in Mailpit at http://localhost:8025. Mailpit keeps them in memory, so restarting it empties the inbox.
+Open https://localhost and accept the self-signed certificate. The emails the site sends (orders,
+account confirmations, password resets and security alerts) arrive in Mailpit at http://localhost:8025. Mailpit keeps them in memory, so restarting it empties the inbox.
 
 To also see them in a real inbox, as Gmail shows them, fill in `secrets/mailpit_forward.yaml`
 (created empty by `dev-init.sh`) and run `docker compose up -d mailpit`. Mailpit then forwards a copy
@@ -92,6 +92,9 @@ Configuration comes from `compose.yaml`, not `.env`; secrets are read from `/run
 | php has no internet | `docker compose exec php php -r 'var_dump(@fsockopen("1.1.1.1", 443));'` | `bool(false)` |
 | Passwords are Argon2id | `docker compose exec db psql -U postgres -d guenaga -c 'SELECT left(password, 10) FROM users'` | `$argon2id$` |
 | Order emails go out (#22) | Place an order at https://localhost/shop, then open http://localhost:8025 | The confirmation within seconds; `docker compose logs mailer` shows `Sent email #…` |
+| Account emails go out (#19) | Sign up at https://localhost/register, then open http://localhost:8025 | "Confirm your email for Guenaga Farmazeutika" within seconds |
+| Logins are throttled (#19) | Log in to one account with a wrong password 6 times within a minute, typing the characters in the picture once it appears | The picture appears after the 3rd try; the 6th gets `Too many attempts… wait … seconds` |
+| Profile photos aren't public | `curl -sk -o /dev/null -w '%{http_code}' https://localhost/account/profile/photo` | `302` (to the login page) |
 | Mailpit refuses plain text | `docker compose exec mailer python -c "import smtplib; smtplib.SMTP('mailpit', 1025).sendmail('a@guenaga.eus', ['b@example.com'], 'x')"` | `530 … Must issue a STARTTLS command first` |
 | The mailer can't read orders | `docker compose exec db psql -U postgres -d guenaga -c 'SET ROLE mailer' -c 'SELECT email FROM orders'` | `permission denied for table orders` |
 | The mailer has no internet | `docker compose exec mailer python -c "import socket; socket.create_connection(('1.1.1.1', 443), 4)"` | `Network is unreachable` |
@@ -159,8 +162,8 @@ are placeholders on purpose.
 
 What the pentest and the GRC work should know:
 
-- **No accounts:** only the browser session that placed an order can see it or pay for it. Anyone
-  else gets a 404, even with the order reference.
+- **Who sees an order:** only the browser session that placed it or, if it was placed while logged
+  in, that account. Anyone else gets a 404, even with the order reference.
 - **Health answers** (age, pregnancy, other medicines, allergies) are encrypted in the database with
   the APP_KEY (Laravel’s `encrypted` casts) and only stored with the customer’s consent.
 - **Simulated card payment:** only the two demo card numbers in `config/shop.php` are accepted, so a
@@ -174,6 +177,51 @@ What the pentest and the GRC work should know:
   queues an email in `email_outbox`, in the same transaction, holding only what the email shows
   (no health answers). The Python mailer sends it over STARTTLS and empties the row once it's
   sent; see [../python/README.md](../python/README.md).
+
+## Accounts
+
+Customers can open an account to follow their orders, keep a profile photo for the counter and,
+next, send prescriptions. Laravel Fortify does the work behind the forms; the pages are the
+team's design in plain Blade, like the rest of the site.
+
+| What | Where |
+|---|---|
+| Login, sign-up, email confirmation, password reset, 2-step verification | Laravel Fortify: `laravel/config/fortify.php`, `app/Providers/FortifyServiceProvider.php`, `app/Actions/`; pages in `resources/views/auth/` |
+| Account pages: overview, profile and photo, security | `app/Http/Controllers/{Account,Profile,TwoStep}Controller.php`, `resources/views/account/`, styles in `public/css/account.css` |
+| "Log in" and "Sign up" in the header, or the account menu | `resources/views/partials/header.blade.php`, `partials/account-menu.blade.php` |
+| Account emails: confirm your email, choose a new password, security alerts | Queued in `email_outbox` by `app/Support/AccountEmails.php`, sent by the Python mailer |
+| Activity log and the new-browser check | `app/Listeners/AccountActivity.php`; tables `account_events` and `known_devices` |
+| Tests | `laravel/tests/Feature/AccountTest.php`, `TwoStepTest.php` |
+
+What the pentest and the GRC work should know:
+
+- **Passwords:** 12 to 128 characters, no rules about symbols or digits, and none of the ~30,000
+  leaked passwords of 12 or more characters in `resources/passwords/leaked.txt` (from SecLists,
+  MIT licence). Hashed with Argon2id. A change or a reset logs out every other browser and emails
+  the owner.
+- **Logging in:** the same message for an unknown email and a wrong password. After 3 wrong
+  tries in 15 minutes from one IP or for one email, the form also asks for the characters in a
+  picture, which the site draws itself with `gd` (php has no route to the internet); each picture
+  works once, for 10 minutes. 5 wrong tries for an email from one IP lock it for a minute.
+  "Forgot your password?" answers the same whether or not the email has an account, and sends at
+  most one link a minute.
+- **2-step verification:** codes from any authenticator app (TOTP), plus 8 recovery codes that work
+  once each. Turning it on takes the password and a code; turning it off takes the password and a
+  code or recovery code; seeing or replacing the recovery codes takes the password, asked again
+  after 15 minutes. 5 code tries a minute. The secret and the recovery codes are encrypted with
+  the APP_KEY.
+- **Email confirmation:** the account pages need a confirmed email. The link is signed and works
+  for 60 minutes, like the password-reset link. Links are built from `APP_URL`, never from the
+  request's Host header, so a forged Host can't put another site in someone's reset email.
+- **Security alerts,** which can't be turned off: a login from a browser the account hasn't used
+  before (a `__Host-gfdevice` cookie, of which only a hash is stored), a password change or reset,
+  2-step verification turned on or off, and a recovery code used. The security page shows recent
+  activity with browser and IP, and every browser logged in, each of which can be logged out.
+- **Profile photos:** JPEG, PNG or WebP, up to 2 MB and 4096×4096 px, redrawn by `gd` into a
+  512 px WebP square, which drops the location and anything else hidden in the file. Kept on the
+  uploads volume outside `public/` under a random name, and shown only to their owner.
+- **Sessions:** in the database, encrypted, 30 minutes idle, a `__Host-` cookie with
+  `SameSite=Strict`, and a new id at every login.
 
 ## Database roles
 
@@ -202,8 +250,8 @@ Deploy workflow; [DEPLOY.md](DEPLOY.md) has the set-up, rollback and disaster re
 
 ## Next
 
-- **#19:** the landing page is done; next is the client portal in `laravel/`, which the "Send a prescription" buttons should point to (they jump to "How a refill works" for now). Laravel Fortify (`composer require laravel/fortify`) provides login, registration, password reset, login throttling and TOTP two-factor without a JavaScript build. Store photos on the private `local` disk and serve them through an authorised route. Use a self-hosted CAPTCHA, since php has no route to the internet; `gd` with FreeType is in the image.
+- **#19:** accounts are done ([Accounts](#accounts)). Still to build: sending a photo of a prescription from the account, which the overview says comes next. Until then the "Send a prescription" buttons take guests to the login page and logged-in customers to their account, which gives the phone number.
 - **#20:** add ModSecurity with the OWASP CRS, for example by swapping Nginx for `owasp/modsecurity-crs:nginx`, which also runs unprivileged on 8080/8443. It is OWASP's image rather than a Docker Official Image, so record that exception. Save the `testssl.sh` and header results in `evidence/`.
 - **#21:** CI/CD is in place ([DEPLOY.md](DEPLOY.md)); what's left is setting up the runner in U1-IT and web01, then testing a deploy and a rollback for the evidence. If the site ever adds Vite assets, CI must build them and Nginx must get `public/build` from the image instead of the bind mount.
-- **#22:** the mailer sends the order emails. The brief's reminder to users without a profile image
-  needs the client portal's accounts first; [../python/README.md](../python/README.md) has the plan.
+- **#22:** the mailer sends the order and account emails. The brief's reminder to users without a
+  profile image is still to do, now that there are accounts; [../python/README.md](../python/README.md) has the plan.

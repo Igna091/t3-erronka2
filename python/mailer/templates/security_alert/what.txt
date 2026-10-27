@@ -1,0 +1,9 @@
+{#- One sentence on what happened, shared by body.txt and body.html -#}
+{{ {
+    "new_device_login": "Someone logged in to your account from a browser we haven't seen it use before.",
+    "password_changed": "The password of your account was changed, and every other browser was logged out.",
+    "password_reset": "The password of your account was reset with a link sent to this email, and every browser was logged out.",
+    "two_factor_enabled": "2-step verification was turned on: logging in now takes a code from your authenticator app as well as your password.",
+    "two_factor_disabled": "2-step verification was turned off: logging in takes only your password now.",
+    "recovery_code_used": "Someone logged in to your account with one of your recovery codes. That code doesn't work any more.",
+}[event] }}

@@ -7,7 +7,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
  * An email waiting for the Python mailer (python/, #22), which sends it and records the
- * outcome. The site only ever adds these.
+ * outcome. It belongs to an order (order_confirmation) or to an account (verify_email,
+ * reset_password, security_alert). The site only ever adds these.
  *
  * @property array<string, mixed>|null $payload
  */
@@ -38,5 +39,13 @@ class OutboxEmail extends Model
     public function order(): BelongsTo
     {
         return $this->belongsTo(Order::class);
+    }
+
+    /**
+     * @return BelongsTo<User, $this>
+     */
+    public function user(): BelongsTo
+    {
+        return $this->belongsTo(User::class);
     }
 }

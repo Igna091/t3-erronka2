@@ -1,0 +1,13 @@
+Hello {{ first_name }},
+
+Thank you for opening an account with {{ pharmacy.name }}. To confirm this is your email,
+open this link. It works once, for {{ expires_minutes }} minutes:
+
+{{ url }}
+
+If you didn't open an account, ignore this email: without the link, nobody can use this
+address for one.
+
+--
+This email was sent automatically by {{ site_url }}. Replies aren't read: call us on
+{{ pharmacy.phone.display }} with any questions.

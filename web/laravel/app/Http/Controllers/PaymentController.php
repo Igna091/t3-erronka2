@@ -127,7 +127,7 @@ class PaymentController extends Controller
 
     private function authorizeOrder(Request $request, Order $order): void
     {
-        abort_unless($order->isOwnedBy($request->session()), 404);
+        abort_unless($order->isOwnedBy($request->session(), $request->user()), 404);
     }
 
     private function checkKey(Order $order): string

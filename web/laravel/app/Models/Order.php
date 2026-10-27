@@ -3,19 +3,21 @@
 namespace App\Models;
 
 use App\Support\OpeningHours;
+use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Contracts\Session\Session;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Str;
 
 /**
- * An order placed in the shop. There are no customer accounts: only the session that placed
- * an order may see it or pay for it.
+ * An order placed in the shop. Only the session that placed it may see it or pay for it, and,
+ * when it was placed while logged in, the account too (on any device).
  */
 class Order extends Model
 {
     protected $fillable = [
-        'reference', 'customer_name', 'email', 'phone',
+        'user_id', 'reference', 'customer_name', 'email', 'phone',
         'taker', 'age', 'pregnant', 'health_notes', 'allergies', 'health_consent_at',
         'payment_method', 'payment_status', 'card_last4', 'total_cents', 'status',
     ];
@@ -108,8 +110,17 @@ class Order extends Model
         $session->push('orders', $this->id);
     }
 
-    public function isOwnedBy(Session $session): bool
+    public function isOwnedBy(Session $session, ?Authenticatable $user = null): bool
     {
-        return in_array($this->id, $session->get('orders', []), true);
+        return in_array($this->id, $session->get('orders', []), true)
+            || ($user !== null && $this->user_id !== null && $this->user_id === $user->getAuthIdentifier());
+    }
+
+    /**
+     * @return BelongsTo<User, $this>
+     */
+    public function user(): BelongsTo
+    {
+        return $this->belongsTo(User::class);
     }
 }
