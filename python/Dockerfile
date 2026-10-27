@@ -4,7 +4,7 @@
 # Stages: base (Python and the pinned libraries) -> dev (adds pytest; the "mailer-tests" service
 #         in web/compose.dev.yaml) -> runtime (what web01 runs; no pip).
 
-FROM python:3.14.9-slim-trixie@sha256:35caba83af2fe6da9a5d922f9b0156f21d1246a48278c58a08bd253303ba42e8 AS base
+FROM python:3.15.0-slim-trixie@sha256:f5b92f2a669a4c347044f29367f31983280b648250ca94dea66f98c53bc87e58 AS base
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
