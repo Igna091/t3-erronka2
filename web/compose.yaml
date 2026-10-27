@@ -217,7 +217,9 @@ services:
   # with the password in secrets/mailpit_auth. Third-party image (axllent/mailpit), not a
   # Docker Official Image.
   # When secrets/mailpit_forward.yaml isn't empty, Mailpit also forwards a copy of every email
-  # to the one inbox named there (README.md), never to the address typed at checkout.
+  # to the one inbox named there (README.md). With MAILPIT_DELIVER_TO set as well, it delivers
+  # an email to its own recipient through the same login, but only when the address matches
+  # that pattern, so the site can't be used to send mail to anyone at all.
   mailpit:
     <<: *hardening
     image: axllent/mailpit:v1.32.0@sha256:0790692be935ea4420d085694f7985b1f692ca6a8771ab0e0bd8ba75ac180498
@@ -225,7 +227,14 @@ services:
     entrypoint:
       - /bin/sh
       - -c
-      - if [ -s /run/secrets/mailpit_forward ]; then export MP_SMTP_FORWARD_CONFIG=/run/secrets/mailpit_forward; fi; exec /mailpit
+      - >-
+        if [ -s /run/secrets/mailpit_forward ]; then
+        export MP_SMTP_FORWARD_CONFIG=/run/secrets/mailpit_forward;
+        if [ -n "$$MAILPIT_DELIVER_TO" ]; then
+        export MP_SMTP_RELAY_CONFIG=/run/secrets/mailpit_forward MP_SMTP_RELAY_MATCHING="$$MAILPIT_DELIVER_TO";
+        fi;
+        fi;
+        exec /mailpit
     ports:
       - "127.0.0.1:${MAILPIT_PORT:-8025}:8025"
     environment:
@@ -234,8 +243,11 @@ services:
       MP_SMTP_REQUIRE_STARTTLS: "true"
       MP_SMTP_AUTH_FILE: /run/secrets/mailpit_auth
       MP_SMTP_DISABLE_RDNS: "true"
-      # mail_inbox gives Mailpit a route out, used only for the forwarding above; its other
-      # outbound features stay off
+      # A regular expression for the addresses that get their emails for real, e.g.
+      # '^(ane@gmail\.com|jon@gmail\.com)$' in web/.env. Empty: nobody does
+      MAILPIT_DELIVER_TO: ${MAILPIT_DELIVER_TO:-}
+      # mail_inbox gives Mailpit a route out, used only for the forwarding and delivering above;
+      # its other outbound features stay off
       MP_DISABLE_VERSION_CHECK: "true"
       MP_BLOCK_REMOTE_CSS_AND_FONTS: "true"
       # Against DNS rebinding: the inbox answers only to these Host headers
