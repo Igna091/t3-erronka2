@@ -1,0 +1,13 @@
+Hello {{ first_name }},
+
+Your {{ pharmacy.name }} account doesn't have a photo yet. With one, we recognise you at the
+counter when you collect a prescription. Adding it takes a minute:
+
+{{ profile_url }}
+
+Only the pharmacy team sees it. We keep a square copy of it, without the photo's location or
+other details, and you can remove it whenever you like.
+
+--
+We send this once a week until your account has a photo. It was sent automatically by
+{{ site_url }}, and replies aren't read.

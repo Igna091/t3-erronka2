@@ -1,0 +1,1 @@
+{{ first_name }}, add a photo to your {{ pharmacy.name }} account

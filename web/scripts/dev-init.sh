@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Creates the machine-specific secrets the stack reads from web/secrets/ (gitignored):
-# Laravel's APP_KEY, four database passwords, a self-signed TLS certificate for dev, and the
+# Laravel's APP_KEY, five database passwords, a self-signed TLS certificate for dev, and the
 # mailer's SMTP login and Mailpit's STARTTLS certificate (issue #22).
 # On web01 the certificates come from the Infra TLS CA instead (issue #10).
 # Existing files are kept, so running it again is safe.
@@ -21,7 +21,7 @@ if [[ ! -s secrets/app_key ]]; then
     echo "created secrets/app_key"
 fi
 
-for name in db_admin_password db_migrator_password db_app_password db_mailer_password; do
+for name in db_admin_password db_migrator_password db_app_password db_mailer_password db_reminder_password; do
     if [[ ! -s secrets/$name ]]; then
         openssl rand -hex 24 | tr -d '\r\n' > "secrets/$name"
         echo "created secrets/$name"

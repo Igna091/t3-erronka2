@@ -34,6 +34,9 @@ class Settings:
     poll_seconds: float
     max_attempts: int
     timeout_seconds: float = 10.0
+    # The website's address, for the links in the emails the mailer writes itself (the photo
+    # reminder); the website's own emails come with theirs
+    site_url: str | None = None
 
     @classmethod
     def from_env(cls, env: Mapping[str, str] = os.environ) -> "Settings":
@@ -57,6 +60,7 @@ class Settings:
             mail_from=_sender(env),
             poll_seconds=_number(env, "MAILER_POLL_SECONDS", 10.0, float),
             max_attempts=_number(env, "MAILER_MAX_ATTEMPTS", 8),
+            site_url=_site_url(env),
         )
 
 
@@ -101,6 +105,15 @@ def _readable_file(env: Mapping[str, str], name: str) -> str | None:
     if not os.access(path, os.R_OK):
         raise ConfigError(f"{name} ({path}) doesn't exist or can't be read")
     return path
+
+
+def _site_url(env: Mapping[str, str]) -> str | None:
+    url = env.get("SITE_URL", "").strip().rstrip("/")
+    if not url:
+        return None
+    if not url.startswith("https://") or not url.removeprefix("https://") or not url.isprintable():
+        raise ConfigError(f"SITE_URL must be the site's https:// address, not {url!r}")
+    return url
 
 
 def _sender(env: Mapping[str, str]) -> Address:

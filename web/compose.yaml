@@ -161,7 +161,7 @@ services:
     tmpfs:
       - /var/run/postgresql:uid=999,gid=999
       - /tmp
-    secrets: [db_admin_password, db_migrator_password, db_app_password, db_mailer_password]
+    secrets: [db_admin_password, db_migrator_password, db_app_password, db_mailer_password, db_reminder_password]
     networks: [backend]
     healthcheck:
       <<: *healthcheck
@@ -180,7 +180,7 @@ services:
       context: ../python
       target: runtime
     image: ${MAILER_IMAGE:-guenaga-web-mailer:dev}
-    environment:
+    environment: &mailer-environment
       DB_HOST: db
       DB_PORT: "5432"
       DB_DATABASE: guenaga
@@ -208,6 +208,30 @@ services:
     healthcheck:
       <<: *healthcheck
       test: ["CMD", "python", "-m", "mailer.heartbeat"]
+    deploy:
+      resources:
+        limits: { cpus: "0.25", memory: 128M, pids: 20 }
+
+  # The weekly reminder to add a profile photo (#22): the mailer's image, run once and gone.
+  #   docker compose run --rm photo-reminder
+  # On web01 a systemd timer runs it every Monday morning (systemd/, DEPLOY.md). It reads users
+  # as the reminder role, which may only read five of its columns, in read-only sessions.
+  photo-reminder:
+    <<: *hardening
+    image: ${MAILER_IMAGE:-guenaga-web-mailer:dev}
+    profiles: [jobs]
+    restart: "no"
+    command: ["--remind-photos"]
+    environment:
+      <<: *mailer-environment
+      DB_USERNAME: reminder
+      DB_PASSWORD_FILE: /run/secrets/db_reminder_password
+      # The reminder's button opens the profile page here
+      SITE_URL: ${APP_URL:-https://localhost}
+    tmpfs:
+      - /tmp
+    secrets: [db_reminder_password, mail_ca_crt, mail_password]
+    networks: [backend, mail]
     deploy:
       resources:
         limits: { cpus: "0.25", memory: 128M, pids: 20 }
@@ -294,6 +318,8 @@ secrets:
     file: ./secrets/db_app_password
   db_mailer_password:
     file: ./secrets/db_mailer_password
+  db_reminder_password:
+    file: ./secrets/db_reminder_password
   tls_crt:
     file: ./secrets/tls.crt
   tls_key:

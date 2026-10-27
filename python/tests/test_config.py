@@ -33,6 +33,11 @@ def test_passwords_come_from_secret_files(env):
     assert str(settings.mail_from) == "Guenaga Farmazeutika <no-reply@guenaga.eus>"
 
 
+def test_the_site_url_is_optional_and_loses_its_last_slash(env):
+    assert Settings.from_env(env).site_url is None
+    assert Settings.from_env(env | {"SITE_URL": "https://www.guenaga.eus/"}).site_url == "https://www.guenaga.eus"
+
+
 def test_the_default_port_follows_the_scheme(env):
     del env["MAIL_PORT"]
 
@@ -50,6 +55,8 @@ def test_the_default_port_follows_the_scheme(env):
         ({"MAIL_PORT": "twenty-five"}, "MAIL_PORT must be a number"),
         ({"MAILER_POLL_SECONDS": "0"}, "MAILER_POLL_SECONDS must be more than 0"),
         ({"MAIL_FROM_ADDRESS": "no-reply"}, "MAIL_FROM_ADDRESS isn't an email address"),
+        ({"SITE_URL": "http://localhost"}, "SITE_URL must be the site's https:// address"),
+        ({"SITE_URL": "https://"}, "SITE_URL must be the site's https:// address"),
     ],
 )
 def test_a_bad_setting_says_which_one(env, change, error):

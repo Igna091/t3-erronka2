@@ -3,7 +3,8 @@
 # empty volume; passwords come from Compose secrets, never from the repo.
 #   migrator - runs Laravel's migrations (the migrate service): owns the tables, the only role with DDL
 #   app      - the Laravel site: reads and writes rows in the migrator's tables, no DDL
-#   mailer   - the Python task (#22): granted SELECT on four user columns by a Laravel migration
+#   mailer   - the Python mailer (#22): reads and updates email_outbox, granted by a Laravel migration
+#   reminder - the photo reminder (#22): read-only, created by 02-reminder-role.sh
 set -e
 
 psql -v ON_ERROR_STOP=1 --username "${POSTGRES_USER:-postgres}" --dbname "$POSTGRES_DB" \

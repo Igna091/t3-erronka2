@@ -1,0 +1,13 @@
+# Runs guenaga-photo-reminder.service once a week. DEPLOY.md shows how to install it.
+
+[Unit]
+Description=Guenaga: the weekly profile photo reminder
+
+[Timer]
+# Mondays at 10:00 in the pharmacy's time zone
+OnCalendar=Mon *-*-* 10:00:00 Europe/Madrid
+# A Monday when web01 was off is made up for when it starts again
+Persistent=true
+
+[Install]
+WantedBy=timers.target

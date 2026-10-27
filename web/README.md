@@ -31,6 +31,7 @@ start WSL instead of Git Bash, so run the script from a Git Bash window.
 ```sh
 cd web
 bash scripts/dev-init.sh              # APP_KEY, passwords and dev certificates in web/secrets/ (gitignored)
+cp .env.example .env                  # this machine's settings (gitignored); the defaults work as they are
 docker compose up -d --build --wait
 ```
 
@@ -56,15 +57,17 @@ override-from: zibereibar@gmail.com   # Gmail only sends as the account itself
 Empty the file again to stop forwarding.
 
 Forwarding never reaches the person an email is written to. For that, list who may get emails for
-real in `web/.env` (ignored by git) and run `docker compose up -d mailpit` again. Mailpit then also
+real in `web/.env` (ignored by git; `.env.example` has both lines below to uncomment) and run `docker compose up -d mailpit` again. Mailpit then also
 delivers each email whose address matches, through the same Gmail login:
 
 ```sh
-MAILPIT_DELIVER_TO='^(ane@gmail\.com|jon@uni\.eus)$'   # a regular expression; unset: nobody
+MAILPIT_DELIVER_TO='(?i)@(gmail\.com|hotmail\.(com|es)|proton\.me|uni\.eus)$'   # a regular expression; unset: nobody
 ```
 
-Keep it to the team's own addresses. `.*` would let anyone who signs up with someone else's
-address make the team's Gmail write to them, and Gmail sends at most 500 emails a day.
+Whole providers like that are fine on your own machine, where only you reach the site. On web01
+list only the team's own addresses (`'^(ane@gmail\.com|jon@uni\.eus)$'`): anyone can sign up
+there, so a whole provider would let them make the team's Gmail write to strangers, and Gmail
+stops at 500 emails a day.
 
 - **Reset the database:** `docker compose down -v` deletes the data and the uploads, so `db/init` runs again on the next start.
 - **Ports 80/443 taken:** set `HTTP_PORT` and `HTTPS_PORT` (PowerShell: `$env:HTTPS_PORT=8443`), then browse to https://localhost:8443 directly, because the HTTP redirect always points at 443. Mailpit's port is `MAILPIT_PORT`.
@@ -108,6 +111,8 @@ Configuration comes from `compose.yaml`, not `.env`; secrets are read from `/run
 | Profile photos aren't public | `curl -sk -o /dev/null -w '%{http_code}' https://localhost/account/profile/photo` | `302` (to the login page) |
 | Mailpit refuses plain text | `docker compose exec mailer python -c "import smtplib; smtplib.SMTP('mailpit', 1025).sendmail('a@guenaga.eus', ['b@example.com'], 'x')"` | `530 … Must issue a STARTTLS command first` |
 | The mailer can't read orders | `docker compose exec db psql -U postgres -d guenaga -c 'SET ROLE mailer' -c 'SELECT email FROM orders'` | `permission denied for table orders` |
+| The photo reminder only reads (#22) | `docker compose exec db psql -U postgres -d guenaga -c 'SET ROLE reminder' -c 'SELECT password FROM users'`, then the same with `UPDATE users SET name = name` | `permission denied for table users` both times |
+| Photo reminders go out (#22) | `docker compose run --rm photo-reminder`, then open http://localhost:8025 | `N user(s) without a photo: reminded N, skipped 0`; an "add a photo" email for each confirmed account without a photo |
 | The mailer has no internet | `docker compose exec mailer python -c "import socket; socket.create_connection(('1.1.1.1', 443), 4)"` | `Network is unreachable` |
 | A down mail server is logged, not a crash | `docker compose stop mailpit`, place an order, `docker compose logs mailer` | `Can't reach the mail server at mailpit:1025: …`, no traceback; `docker compose start mailpit` and it goes out |
 
@@ -133,6 +138,7 @@ shell out (`about`, `schedule:run`, `db`) fail inside the runtime container. Run
 | `../python/` | The mailer: its code, tests and Dockerfile |
 | `scripts/dev-init.sh` | Creates `secrets/`, including Mailpit's certificate and the throwaway CA the mailer trusts |
 | `scripts/deploy.sh` | Deploys a release on web01, or rolls back; installed there as `guenaga-deploy` ([DEPLOY.md](DEPLOY.md)) |
+| `systemd/` | The weekly timer that runs the photo reminder on web01 ([DEPLOY.md](DEPLOY.md)) |
 | `DEPLOY.md` | CI/CD: checks, image scans, GHCR, deploying, rollback and disaster recovery |
 | `../.github/workflows/` | The CI, Deploy and Rollback workflows |
 
@@ -241,7 +247,8 @@ What the pentest and the GRC work should know:
 | `postgres` | Everything, but only from inside the db container: `docker compose exec db psql -U postgres -d guenaga` | Admins |
 | `migrator` | Owns the tables; the only role with DDL | The `migrate` service |
 | `app` | Read and write rows in the migrator's tables; no DDL | The Laravel site |
-| `mailer` | `SELECT` on the content columns of `email_outbox` and `UPDATE` on its delivery columns; `SELECT` on `id`, `name`, `email`, `profile_image` of `users`. Nothing else, so not `orders` (granted by migrations) | The Python mailer (#22) |
+| `mailer` | `SELECT` on the content columns of `email_outbox` and `UPDATE` on its delivery columns. Nothing else, so not `users` or `orders` (granted by migrations) | The Python mailer (#22) |
+| `reminder` | `SELECT` on `id`, `name`, `email`, `profile_image`, `email_verified_at` of `users`, nothing else, and its sessions are read-only. Created by `db/init/02-reminder-role.sh` | The weekly photo reminder (#22) |
 
 ## Moving to web01
 
@@ -251,7 +258,7 @@ Deploy workflow; [DEPLOY.md](DEPLOY.md) has the set-up, rollback and disaster re
 1. Apply the host baseline in [docker/README.md](../docker/README.md).
 2. Put the Infra TLS CA certificate and key for `www.guenaga.eus` (#10) in `secrets/tls.crt` and `secrets/tls.key`, then run `scripts/dev-init.sh`. It keeps existing files and only creates the key and passwords.
 3. Lock the folder: as root, `chmod 700 secrets` and leave the files `0644`. Host users can't open the folder, but Docker bind-mounts each file on its own, so the containers can still read them, including under `userns-remap`.
-4. Put `APP_URL=https://www.guenaga.eus` in `web/.env`. web01's own settings go there and in `secrets/`, both ignored by git; tracked files stay as they are in the release, or the deploy refuses to run. Nginx answers for any name (`server_name _`), so it needs no change.
+4. Copy `.env.example` to `web/.env`, set `APP_URL=https://www.guenaga.eus` and, for real emails, the web01 `MAILPIT_DELIVER_TO` line with the team's addresses. web01's own settings go there and in `secrets/`, both ignored by git; tracked files stay as they are in the release, or the deploy refuses to run. Nginx answers for any name (`server_name _`), so it needs no change.
 5. Mail: for the demo, Mailpit stays, and its inbox is reached through an SSH tunnel
    (`ssh -L 8025:127.0.0.1:8025 web01`). Its certificate (`secrets/mailpit.crt` and `.key`, for the
    name `mailpit`) can come from the Infra TLS CA, with that CA's certificate in
@@ -264,5 +271,4 @@ Deploy workflow; [DEPLOY.md](DEPLOY.md) has the set-up, rollback and disaster re
 - **#19:** accounts are done ([Accounts](#accounts)). Still to build: sending a photo of a prescription from the account, which the overview says comes next. Until then the "Send a prescription" buttons take guests to the login page and logged-in customers to their account, which gives the phone number.
 - **#20:** add ModSecurity with the OWASP CRS, for example by swapping Nginx for `owasp/modsecurity-crs:nginx`, which also runs unprivileged on 8080/8443. It is OWASP's image rather than a Docker Official Image, so record that exception. Save the `testssl.sh` and header results in `evidence/`.
 - **#21:** CI/CD is in place ([DEPLOY.md](DEPLOY.md)); what's left is setting up the runner in U1-IT and web01, then testing a deploy and a rollback for the evidence. If the site ever adds Vite assets, CI must build them and Nginx must get `public/build` from the image instead of the bind mount.
-- **#22:** the mailer sends the order and account emails. The brief's reminder to users without a
-  profile image is still to do, now that there are accounts; [../python/README.md](../python/README.md) has the plan.
+- **#22:** the mailer sends the order and account emails, and the photo reminder runs weekly. What's left is installing its timer on web01 with the rest ([DEPLOY.md](DEPLOY.md)).

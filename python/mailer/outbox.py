@@ -3,15 +3,15 @@ web/laravel/database/migrations. The mailer's database role may read each row's 
 update only its delivery columns."""
 
 from collections.abc import Iterator
-from contextlib import contextmanager
+from contextlib import AbstractContextManager, contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any
 
 import psycopg
-from psycopg import errors
 from psycopg.rows import class_row
 
+from mailer import database
 from mailer.config import Settings
 
 # Due: not sent yet, not given up on, and not waiting for a retry
@@ -36,10 +36,6 @@ _MARK_FAILED = (
     "UPDATE email_outbox SET attempts = attempts + 1, last_error = %s,"
     " failed_at = now(), updated_at = now() WHERE id = %s"
 )
-
-
-class DatabaseUnavailable(Exception):
-    """The database can't be reached, or won't let the mailer use the outbox."""
 
 
 @dataclass(frozen=True)
@@ -95,40 +91,11 @@ class Outbox:
         if self._conn is not None and (self._conn.closed or self._conn.broken):
             self.close()
         if self._conn is None:
-            s = self._settings
-            self._conn = psycopg.connect(
-                host=s.db_host,
-                port=s.db_port,
-                dbname=s.db_name,
-                user=s.db_user,
-                password=s.db_password,
-                connect_timeout=5,
-                application_name="guenaga-mailer",
-                # Each statement commits on its own; next_due() opens its transactions itself
-                autocommit=True,
-                # Laravel's timestamps are UTC, so the mailer's are too
-                options="-c TimeZone=UTC",
-            )
+            self._conn = database.connect(self._settings)
         return self._conn
 
-    @contextmanager
-    def _errors(self) -> Iterator[None]:
-        """Turns the driver's errors into a DatabaseUnavailable that says what's wrong."""
-        try:
-            yield
-        except (errors.UndefinedTable, errors.InsufficientPrivilege) as error:
-            raise DatabaseUnavailable(
-                f"The {self._settings.db_user} role can't use email_outbox ({_first_line(error)}). "
-                "Apply the website's migrations: docker compose run --rm migrate"
-            ) from None
-        except psycopg.Error as error:
-            # A lost connection is replaced on the next call (see _connection)
-            s = self._settings
-            raise DatabaseUnavailable(
-                f"Can't use the database {s.db_name} at {s.db_host}:{s.db_port}: {_first_line(error)}"
-            ) from None
-
-
-def _first_line(error: Exception) -> str:
-    lines = str(error).strip().splitlines()
-    return lines[0] if lines else type(error).__name__
+    def _errors(self) -> AbstractContextManager[None]:
+        # A lost connection is replaced on the next call (see _connection)
+        return database.explained(
+            self._settings, "email_outbox", "Apply the website's migrations: docker compose run --rm migrate"
+        )

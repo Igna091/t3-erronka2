@@ -1,0 +1,13 @@
+{% extends "_layout/account.html" %}
+{% block title %}Add a profile photo{% endblock %}
+{% block preheader %}So we recognise you at the counter when you collect a prescription.{% endblock %}
+{% block heading %}Add a profile photo{% endblock %}
+{% block content %}
+<p style="margin:0 0 20px; color:#3D5F55;">Hello {{ first_name }}, your {{ pharmacy.name }} account doesn’t have a photo yet. With one, we recognise you at the counter when you collect a prescription. Adding it takes a minute.</p>
+<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 24px;">
+  <tr><td style="border-radius:999px; background:#2A4BD7;"><a href="{{ profile_url }}" style="display:inline-block; padding:14px 28px; border-radius:999px; color:#FFFFFF; font-size:17px; font-weight:700; text-decoration:none;">Add my photo</a></td></tr>
+</table>
+<p style="margin:0 0 20px; font-size:14px; color:#3D5F55;">Button not working? Copy this address into your browser:<br><a href="{{ profile_url }}" style="color:#2A4BD7; word-break:break-all;">{{ profile_url }}</a></p>
+<p style="margin:0; padding:16px 18px; border-radius:12px; background:#F5F7F4; font-size:15px;">Only the pharmacy team sees it. We keep a square copy of it, without the photo’s location or other details, and you can remove it whenever you like.</p>
+{% endblock %}
+{% block footer %}We send this once a week until your account has a photo. It was sent automatically by <a href="{{ site_url }}" style="color:#2A4BD7;">{{ site_url }}</a>, and replies aren’t read.{% endblock %}
