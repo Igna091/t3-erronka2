@@ -55,6 +55,17 @@ override-from: zibereibar@gmail.com   # Gmail only sends as the account itself
 
 Empty the file again to stop forwarding.
 
+Forwarding never reaches the person an email is written to. For that, list who may get emails for
+real in `web/.env` (ignored by git) and run `docker compose up -d mailpit` again. Mailpit then also
+delivers each email whose address matches, through the same Gmail login:
+
+```sh
+MAILPIT_DELIVER_TO='^(ane@gmail\.com|jon@uni\.eus)$'   # a regular expression; unset: nobody
+```
+
+Keep it to the team's own addresses. `.*` would let anyone who signs up with someone else's
+address make the team's Gmail write to them, and Gmail sends at most 500 emails a day.
+
 - **Reset the database:** `docker compose down -v` deletes the data and the uploads, so `db/init` runs again on the next start.
 - **Ports 80/443 taken:** set `HTTP_PORT` and `HTTPS_PORT` (PowerShell: `$env:HTTPS_PORT=8443`), then browse to https://localhost:8443 directly, because the HTTP redirect always points at 443. Mailpit's port is `MAILPIT_PORT`.
 - **After pulling a change that adds secrets:** run `scripts/dev-init.sh` again; it only creates what's missing.
@@ -244,7 +255,7 @@ Deploy workflow; [DEPLOY.md](DEPLOY.md) has the set-up, rollback and disaster re
 5. Mail: for the demo, Mailpit stays, and its inbox is reached through an SSH tunnel
    (`ssh -L 8025:127.0.0.1:8025 web01`). Its certificate (`secrets/mailpit.crt` and `.key`, for the
    name `mailpit`) can come from the Infra TLS CA, with that CA's certificate in
-   `secrets/mail_ca.crt`. Forwarding to a real inbox (above) also needs web01's firewall to let
+   `secrets/mail_ca.crt`. Forwarding or delivering to real inboxes (above) also needs web01's firewall to let
    Mailpit out to `smtp.gmail.com:587`. To deliver real email, point the mailer's `MAIL_*` settings
    at the relay (with its CA, or none for a public one) and remove `mailpit`.
 
