@@ -1,5 +1,6 @@
 {{-- Site header. $status and $basketCount come from the view composer in AppServiceProvider;
-     pass ['shop' => true] to show the basket instead of "Send a prescription". --}}
+     pass ['shop' => true] to show the basket too. Guests get "Log in" and "Sign up", a
+     logged-in user the account menu. --}}
 <header class="site-header wrap">
     <a class="brand" href="{{ route('home') }}">
         <svg width="34" height="18" viewBox="0 0 34 18" aria-hidden="true"><rect x="1" y="2" width="20" height="14" rx="7" fill="#F2C94C"/><path d="M15 1h10a8 8 0 0 1 0 16H15z" fill="#2A4BD7"/></svg>
@@ -10,7 +11,7 @@
         @include('partials.nav-links')
     </nav>
 
-    <div class="header-actions">
+    <div @class(['header-actions', 'header-actions--shop' => $shop ?? false])>
         <p @class(['status', 'is-closed' => ! $status['open']])>
             <svg class="cross" width="16" height="16" viewBox="0 0 18 18" aria-hidden="true"><path d="M6 0h6v6h6v6h-6v6H6v-6H0V6h6z" fill="currentColor"/></svg>
             @if ($status['open'])
@@ -27,9 +28,15 @@
                 <span class="basket-button__label">Basket</span>
                 <span class="basket-button__count">{{ $basketCount }}</span>
             </a>
-        @else
-            <a class="btn btn--primary btn--small header-cta" href="{{ route('home') }}#refills">Send a prescription</a>
         @endif
+        @auth
+            @include('partials.account-menu')
+        @else
+            <div class="auth-links">
+                <a class="auth-links__login" href="{{ route('login') }}">Log in</a>
+                <a class="btn btn--primary btn--small auth-links__signup" href="{{ route('register') }}">Sign up</a>
+            </div>
+        @endauth
     </div>
 
     {{-- Phone menu: a native disclosure, so it opens without JavaScript --}}
@@ -39,6 +46,9 @@
         </summary>
         <nav class="menu-panel" aria-label="Main">
             @include('partials.nav-links')
+            @guest
+                <a class="menu-panel__account" href="{{ route('register') }}">Sign up</a>
+            @endguest
         </nav>
     </details>
 </header>

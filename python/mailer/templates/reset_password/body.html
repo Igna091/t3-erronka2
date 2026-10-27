@@ -1,0 +1,12 @@
+{% extends "_layout/account.html" %}
+{% block title %}Choose a new password{% endblock %}
+{% block preheader %}The link works for {{ expires_minutes }} minutes.{% endblock %}
+{% block heading %}Choose a new password{% endblock %}
+{% block content %}
+<p style="margin:0 0 20px; color:#3D5F55;">Hello {{ first_name }}, someone asked to choose a new password for your account. If it was you, use the button. It works once, for {{ expires_minutes }} minutes.</p>
+<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 24px;">
+  <tr><td style="border-radius:999px; background:#2A4BD7;"><a href="{{ url }}" style="display:inline-block; padding:14px 28px; border-radius:999px; color:#FFFFFF; font-size:17px; font-weight:700; text-decoration:none;">Choose a new password</a></td></tr>
+</table>
+<p style="margin:0 0 20px; font-size:14px; color:#3D5F55;">Button not working? Copy this address into your browser:<br><a href="{{ url }}" style="color:#2A4BD7; word-break:break-all;">{{ url }}</a></p>
+<p style="margin:0; padding:16px 18px; border-radius:12px; background:#F5F7F4; font-size:15px;">Choosing a new password logs you out on every other device. Wasn’t you? Ignore this email: your password stays as it is. If it keeps happening, call us on {{ pharmacy.phone.display }}.</p>
+{% endblock %}

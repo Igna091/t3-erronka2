@@ -15,13 +15,13 @@ use Illuminate\Validation\Rule;
 class CardPaymentRequest extends FormRequest
 {
     /**
-     * Only the session that placed the order may pay for it.
+     * Only the session or the account that placed the order may pay for it.
      */
     public function authorize(): bool
     {
         $order = $this->route('order');
 
-        return $order instanceof Order && $order->isOwnedBy($this->session());
+        return $order instanceof Order && $order->isOwnedBy($this->session(), $this->user());
     }
 
     /**

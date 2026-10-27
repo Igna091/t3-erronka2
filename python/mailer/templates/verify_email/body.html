@@ -1,0 +1,12 @@
+{% extends "_layout/account.html" %}
+{% block title %}Confirm your email{% endblock %}
+{% block preheader %}One click to finish opening your account.{% endblock %}
+{% block heading %}Confirm your email{% endblock %}
+{% block content %}
+<p style="margin:0 0 20px; color:#3D5F55;">Hello {{ first_name }}, thank you for opening an account with {{ pharmacy.name }}. To confirm this is your email, use the button. It works once, for {{ expires_minutes }} minutes.</p>
+<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 24px;">
+  <tr><td style="border-radius:999px; background:#2A4BD7;"><a href="{{ url }}" style="display:inline-block; padding:14px 28px; border-radius:999px; color:#FFFFFF; font-size:17px; font-weight:700; text-decoration:none;">Confirm my email</a></td></tr>
+</table>
+<p style="margin:0 0 20px; font-size:14px; color:#3D5F55;">Button not working? Copy this address into your browser:<br><a href="{{ url }}" style="color:#2A4BD7; word-break:break-all;">{{ url }}</a></p>
+<p style="margin:0; padding:16px 18px; border-radius:12px; background:#F5F7F4; font-size:15px;">Didn’t open an account? Ignore this email: without the link, nobody can use this address for one.</p>
+{% endblock %}

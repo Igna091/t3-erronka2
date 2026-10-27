@@ -7,6 +7,7 @@ use App\Support\OpeningHours;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\RateLimiter;
+use Illuminate\Support\Facades\URL;
 use Illuminate\Support\Facades\View;
 use Illuminate\Support\ServiceProvider;
 
@@ -25,6 +26,13 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        // Links in emails (confirm your email, reset your password) are built from APP_URL, never
+        // from the request's Host header, which anyone can set: password-reset poisoning
+        URL::forceRootUrl(config('app.url'));
+        if (str_starts_with((string) config('app.url'), 'https://')) {
+            URL::forceScheme('https');
+        }
+
         // Enough card and code attempts for a person, too few to try card numbers by script
         RateLimiter::for('payments', fn (Request $request) => Limit::perMinute(10)->by($request->session()->getId()));
 

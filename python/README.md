@@ -1,8 +1,16 @@
 # python
 
 The mailer (issue #22): a Python service that sends the emails the website queues, over SMTP
-with TLS. Today it sends one email: the confirmation of a shop order, once the order is paid by
-card or is to be paid at the counter. It runs as the `mailer` service of
+with TLS:
+
+| Kind | When |
+|---|---|
+| `order_confirmation` | A shop order is paid by card or is to be paid at the counter |
+| `verify_email` | An account is opened, or its email changed: the link that confirms the address |
+| `reset_password` | Someone asks for a new password: the link to choose one |
+| `security_alert` | A login from a new browser, a password changed or reset, 2-step verification turned on or off, a recovery code used |
+
+It runs as the `mailer` service of
 [web/compose.yaml](../web/compose.yaml), next to Mailpit, which catches the emails for the demo.
 
 ```
@@ -15,10 +23,13 @@ Laravel ── same transaction as the payment ──► email_outbox ◄── 
 1. When an order is settled, the site adds a row to `email_outbox` in the same database
    transaction, so there is an email exactly when there is a settled order, never one without the
    other. The row holds only what the email shows: name and address, medicines, total, payment
-   and the pharmacy's details. The health answers are not in it.
+   and the pharmacy's details. The health answers are not in it. Account emails are queued the
+   same way, holding the name, the address and the link, or for an alert, what happened, when, and
+   from which browser and IP.
 2. Every 5 seconds the mailer locks the oldest row that is due (`FOR UPDATE SKIP LOCKED`), builds
    the email from `mailer/templates/<kind>/`, sends it, records how it went and, once it's sent,
-   empties the row's payload: the order still has the details.
+   empties the row's payload: the order still has the details, and a confirmation or reset link
+   leaves the database with it.
 3. If the mail server turns an email down for now (4xx), the mailer tries again after 1 minute,
    then 2, 4… up to an hour, 8 attempts in all. If it refuses it for good (5xx), or the row can't
    become an email, the mailer gives up on that one email (`failed_at`) and goes on with the rest.
@@ -34,7 +45,7 @@ goes again. Every attempt carries the same `Message-ID`, so mail clients show it
 
 | What | How |
 |---|---|
-| Database | The `mailer` role may `SELECT` the outbox's content columns and `UPDATE` only its delivery columns ([migration](../web/laravel/database/migrations/2026_10_26_100002_create_email_outbox_table.php)). It can't read `orders`, see which order a row belongs to, add or delete rows, or create tables |
+| Database | The `mailer` role may `SELECT` the outbox's content columns and `UPDATE` only its delivery columns ([migration](../web/laravel/database/migrations/2026_10_26_100002_create_email_outbox_table.php)). It can't read `orders`, see which order or account a row belongs to, add or delete rows, or create tables |
 | TLS | STARTTLS on every connection (`MAIL_SCHEME=smtps` for TLS from the first byte); there is no unencrypted setting. The certificate must chain to `MAIL_CA_FILE` and match `MAIL_HOST`, with Python's strict X.509 checks. A server that doesn't offer STARTTLS gets nothing |
 | Mailpit | Requires STARTTLS and the mailer's login; refuses plain text, a login before TLS and a wrong password. Its inbox listens on 127.0.0.1 only and answers only to `localhost` Host headers, against DNS rebinding. Optionally it forwards a copy of every email to the team's own inbox (web/README.md); the mailer itself still has no route out |
 | Injection | The HTML is autoescaped, so a name or a medicine can't add markup or links. A line break or other control character in a name or address fails that email instead of adding headers such as `Bcc`. The templates are files in the image; the payload is only data |
@@ -54,6 +65,7 @@ goes again. Every attempt carries the same `Message-ID`, so mail clients show it
 | `mailer/config.py` | Settings from the environment |
 | `mailer/heartbeat.py` | Docker's health check |
 | `mailer/templates/order_confirmation/` | The order email: `subject.txt`, `body.txt`, `body.html` |
+| `mailer/templates/verify_email/`, `reset_password/`, `security_alert/` | The account emails; the HTML extends `_layout/account.html`, and an alert's subject and first sentence depend on the event |
 | `tests/` | Unit tests; the database and the mail server are faked |
 | `Dockerfile` | `base` → `dev` (pytest) → `runtime` |
 
@@ -97,7 +109,7 @@ docker compose exec db psql -U postgres -d guenaga -c "UPDATE email_outbox SET f
 1. Add `mailer/templates/<kind>/` with `subject.txt`, `body.txt` and `body.html` (inline styles, no
    images or web fonts, like the order email).
 2. In Laravel, queue a row with that `kind` in the transaction that makes the change, as
-   `Order::queueConfirmationEmail()` does.
+   `Order::queueConfirmationEmail()` and `App\Support\AccountEmails` do.
 3. Add tests for both sides.
 
 ## Updating the libraries
@@ -115,7 +127,7 @@ docker run --rm -v "$PWD:/src" -w /src python:3.14.9-slim-trixie sh -c '
 
 ## Still to do for #22
 
-The brief also asks for a reminder to website users who have no profile image. That needs user
-accounts, which come with the client portal (#19). The `mailer` role can already read `id`,
+The brief also asks for a reminder to website users who have no profile image. The accounts
+exist now (#19), with the photo on the profile page. The `mailer` role can already read `id`,
 `name`, `email` and `profile_image` from `users` for it. The plan is a daily `--remind-photos`
 pass in this package, with its own templates, and a unit test for the selection.

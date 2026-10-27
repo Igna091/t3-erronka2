@@ -932,6 +932,7 @@ button.btn:disabled {
     flex: none;
     width: 24px;
     height: 24px;
+    min-height: 0;
     margin: 2px 0 0;
     accent-color: var(--blue);
 }
@@ -1811,27 +1812,11 @@ button.btn:disabled {
 
 /* Phones */
 
-@media (max-width: 719px) {
-    .demo-bar p {
-        align-items: flex-start;
-        font-size: 14px;
-    }
+/* Phones, and wide screens where the header is one row: the basket is an icon with its count */
 
-    .site-header:not(.site-header--slim) {
-        grid-template-columns: minmax(0, 1fr) auto auto;
-    }
-
-    .header-actions {
-        display: contents;
-    }
-
-    .header-actions .status {
-        grid-area: 2 / 1 / 3 / 4;
-    }
-
+@media (max-width: 719px), (min-width: 1280px) {
     .basket-button {
         position: relative;
-        grid-area: 1 / 2;
         justify-content: center;
         width: 44px;
         height: 44px;
@@ -1856,6 +1841,35 @@ button.btn:disabled {
         height: 22px;
         padding: 0 6px;
         font-size: 12px;
+    }
+}
+
+@media (max-width: 719px) {
+    .demo-bar p {
+        align-items: flex-start;
+        font-size: 14px;
+    }
+
+    .site-header:not(.site-header--slim) {
+        grid-template-columns: minmax(0, 1fr) auto auto;
+    }
+
+    .header-actions {
+        display: contents;
+    }
+
+    .header-actions .status {
+        grid-area: 2 / 1;
+    }
+
+    .header-actions .auth-links,
+    .header-actions .account-menu {
+        grid-area: 2 / 2 / 3 / 4;
+        justify-self: end;
+    }
+
+    .basket-button {
+        grid-area: 1 / 2;
     }
 
     .site-header .menu {

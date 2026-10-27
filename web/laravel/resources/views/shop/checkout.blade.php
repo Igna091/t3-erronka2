@@ -41,12 +41,12 @@
                     <div class="fields">
                         <div class="field field--wide">
                             <label for="name">Full name</label>
-                            <input id="name" name="name" type="text" value="{{ old('name') }}" autocomplete="name" maxlength="100" required @error('name') aria-invalid="true" aria-describedby="name-error" @enderror>
+                            <input id="name" name="name" type="text" value="{{ old('name', auth()->user()?->name) }}" autocomplete="name" maxlength="100" required @error('name') aria-invalid="true" aria-describedby="name-error" @enderror>
                             @error('name')<p class="field__error" id="name-error">{{ $message }}</p>@enderror
                         </div>
                         <div class="field">
                             <label for="email">Email</label>
-                            <input id="email" name="email" type="email" value="{{ old('email') }}" autocomplete="email" maxlength="255" required @error('email') aria-invalid="true" aria-describedby="email-error" @enderror>
+                            <input id="email" name="email" type="email" value="{{ old('email', auth()->user()?->email) }}" autocomplete="email" maxlength="255" required @error('email') aria-invalid="true" aria-describedby="email-error" @enderror>
                             @error('email')<p class="field__error" id="email-error">{{ $message }}</p>@enderror
                         </div>
                         <div class="field">

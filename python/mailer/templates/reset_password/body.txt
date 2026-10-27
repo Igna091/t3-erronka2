@@ -1,0 +1,14 @@
+Hello {{ first_name }},
+
+Someone asked to choose a new password for your account. If it was you, open this link.
+It works once, for {{ expires_minutes }} minutes:
+
+{{ url }}
+
+Choosing a new password logs you out on every other device.
+
+If it wasn't you, ignore this email: your password stays as it is. If it keeps happening,
+call us on {{ pharmacy.phone.display }}.
+
+--
+This email was sent automatically by {{ site_url }}. Replies aren't read.

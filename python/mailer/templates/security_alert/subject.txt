@@ -1,0 +1,8 @@
+{{ {
+    "new_device_login": "New login to your " ~ pharmacy.name ~ " account",
+    "password_changed": "Your password was changed",
+    "password_reset": "Your password was reset",
+    "two_factor_enabled": "2-step verification is on",
+    "two_factor_disabled": "2-step verification was turned off",
+    "recovery_code_used": "A recovery code was used to log in",
+}[event] }}

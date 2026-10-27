@@ -36,8 +36,10 @@ class CheckoutController extends Controller
         }
 
         $answers = $request->validated();
-        $order = DB::transaction(function () use ($answers, $lines) {
+        $order = DB::transaction(function () use ($answers, $lines, $request) {
             $order = Order::create([
+                // Logged in: the order is also the account's, on any device
+                'user_id' => $request->user()?->getAuthIdentifier(),
                 'reference' => Order::newReference(),
                 'customer_name' => $answers['name'],
                 'email' => $answers['email'],

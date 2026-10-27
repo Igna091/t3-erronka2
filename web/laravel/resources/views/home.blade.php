@@ -5,6 +5,29 @@
 @section('content')
     @include('partials.header')
 
+    @auth
+        <div class="wrap">
+            <section class="welcome-strip" aria-label="Your account">
+                <p>
+                    <span class="welcome-strip__dot" aria-hidden="true"></span>
+                    <span>
+                        <strong>Hello, {{ auth()->user()->firstName() }}.</strong>
+                        @if (! auth()->user()->hasVerifiedEmail())
+                            Confirm your email to finish opening your account.
+                        @elseif ($latestOrder && $latestOrder->created_at?->isAfter(now()->subDays(14)))
+                            Your order {{ $latestOrder->reference }} is being prepared. We text you when it’s ready to collect.
+                        @elseif (! auth()->user()->hasTwoStep())
+                            Protect your account with 2-step verification.
+                        @else
+                            Good to see you again.
+                        @endif
+                    </span>
+                </p>
+                <a href="{{ route('account.dashboard') }}">Go to your account</a>
+            </section>
+        </div>
+    @endauth
+
     <main id="main">
         {{-- Wide screens: the text scrolls on the left while one capsule stays pinned on the right and
              reaches each data-capsule-step as that block passes the middle of the window. Narrower
@@ -16,7 +39,8 @@
                     <h1>Send it now.<br>Pick it up on your way home.</h1>
                     <p class="lead">Upload a photo of your prescription or give us your health card number. A pharmacist gets it ready and texts you when it’s waiting at the counter.</p>
                     <div class="actions">
-                        <a class="btn btn--primary" href="#refills">Send a prescription</a>
+                        {{-- Sending a prescription needs an account --}}
+                        <a class="btn btn--primary" href="{{ auth()->check() ? route('account.dashboard') : route('login') }}">Send a prescription</a>
                         <a class="btn btn--outline" href="tel:{{ config('pharmacy.phone.dial') }}">Call {{ config('pharmacy.phone.display') }}</a>
                     </div>
                 </section>
