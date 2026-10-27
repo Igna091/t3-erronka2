@@ -1,25 +1,26 @@
 <?php
 
-//MySQL
-$mysql_host = "localhost";
-$mysql_user = "root";
-$mysql_pass = "";
-$mysql_db = "BDweb";
+declare(strict_types=1);
 
-//Gallery
-$enpresa = "Proiektua";
-$version = "1.0";
+// The app's settings. The database login comes from the environment and a Docker secret
+// (compose.yaml), never from the code. Inside Docker the database host is the service name,
+// mysql, not localhost.
 
-//Vulnerabilities (true or false)
-//NOTE: disabling some vulnerabilities may render others useless
-//$guard_pers_xss = true; //Block persistent cross site scripting
-//$guard_refl_xss = true; //Block reflected cross site scripting
-//$guard_csrf = true; //Block cross site request forgery //Blocker not yet implemented
-//$guard_sesfix = true; //Block session fixation //Blocker not yet implemented
-//$guard_sqli = true; //Block SQL injection
-//$guard_auth_sqli = true; //Block authentication bypass SQL injection
-//$guard_lfi = true; //Block local file inclusions
-//$guard_rfi = true; //Block remote file inclusions
-//$guard_fuv = true; //Block file upload vulnerabilities
+return [
+    'enpresa' => 'Proiektua',
+    'version' => '2.0',
 
-?>
+    'db' => [
+        'host' => getenv('DB_HOST') ?: 'mysql',
+        'name' => getenv('DB_NAME') ?: 'bdweb',
+        'user' => getenv('DB_USER') ?: 'bdweb_app',
+        'password_file' => getenv('DB_PASSWORD_FILE') ?: '/run/secrets/db_app_password',
+    ],
+
+    // A session with no request for this long is logged out
+    'session_idle_minutes' => 30,
+
+    // Product pictures are public; profile photos are kept outside the web root
+    'images_dir' => __DIR__ . '/public/images',
+    'profiles_dir' => __DIR__ . '/storage/perfiles',
+];

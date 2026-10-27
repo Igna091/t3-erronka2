@@ -16,6 +16,7 @@ t3-erronka2/
 ├── docker/         daemon.json baseline, docker-bench results per host
 ├── web/            Laravel app, Dockerfile, compose.yaml, nginx, php.ini, PostgreSQL roles
 ├── python/         the mailer (order emails), Dockerfile and tests
+├── ekoizpengehigarriak/  the "Ekoizpen gehigarriak" shop: a vulnerable PHP app, fixed and in two containers
 ├── hardening/      baselines, GPO exports, backup scripts
 ├── monitoring/     Wazuh compose file, rules and decoders
 ├── ot/             PLC programs, SCADA config, honeypot compose file
@@ -37,3 +38,4 @@ t3-erronka2/
 
 [web/README.md](web/README.md) runs the website stack (Nginx, Laravel on PHP 8.5.12, PostgreSQL) on any machine with Docker.
 [web/DEPLOY.md](web/DEPLOY.md) explains CI/CD: how a change is checked, released to web01 and rolled back.
+[ekoizpengehigarriak/README.md](ekoizpengehigarriak/README.md) runs the fixed shop from the "Ekoizpen gehigarriak" exercise; [CHANGES.md](ekoizpengehigarriak/CHANGES.md) lists what was wrong with it and how each weakness was fixed.

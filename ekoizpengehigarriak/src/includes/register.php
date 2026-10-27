@@ -1,122 +1,112 @@
 <?php
-// assign defaults
-$data = array('email' 		=> 'email',
-			  'firstname' 	=> 'nombre',
-			  'lastname' 	=> 'apellidos',
-			  'postcode' 	=> 'codigo postal',
-			  'city' 		=> 'ciudad',
-			  'stateProv' 	=> 'provincia',
-			  'country'		=> 'pais',
-			  'telephone' 	=> 'telefono',
-			  'password' 	=> 'contraseña',
-			  'password2' 	=> 'repetir contraseña',
-			  'imagen'      => ''
-);
-$error = array('email' 	  => '',
-			  'firstname' => '',
-			  'lastname'  => '',
-			  'city'	  => '',
-			  'stateProv' => '',
-			  'country'	  => '',
-			  'postcode'  => '',
-			  'telephone' => '',
-			  'password'  => '',
-);
-if (isset($_POST['data'])) {
-	$data = $_POST['data'];
 
-    $path = "perfiles/".basename($_FILES['imagen']['name']);
-    move_uploaded_file($_FILES['imagen']['tmp_name'], $path);
-    $data['imagen'] = basename($_FILES['imagen']['name']);
+declare(strict_types=1);
 
-    $sql = "INSERT INTO users(username, password, izena, abizena, hiria, lurraldea, herrialdea, postakodea, telefonoa, irudia) VALUES (";
-    $sql .= "'" . $data['email'] . "', ";
-    $sql .= "'" . md5($data['password'] ). "', ";
-    $sql .= "'" . $data['firstname'] . "', ";
-    $sql .= "'" . $data['lastname'] . "', ";
-    $sql .= "'" . $data['city'] . "', ";
-    $sql .= "'" . $data['stateProv'] . "', ";
-    $sql .= "'" . $data['country'] . "', ";
-    $sql .= "'" . $data['postcode'] . "', ";
-    $sql .= "'" . $data['telephone'] . "', ";
-    $sql .= "'" . $data['imagen']. "')";
-    if (!mysqli_query($conx,"$sql"))
-    {
-        die('Error: ' . mysqli_error());
+// Signing up. Every field is checked (lib/validation.php) and stored with a prepared statement;
+// the password as an Argon2id hash. The photo is optional, checked and redrawn, and kept outside
+// the web root (storage/perfiles), where only its owner can see it (action=photo).
+
+if (current_user() !== null) {
+    echo '<div class="center"><h5>Saioa hasita duzu jada.</h5></div>';
+
+    return;
+}
+
+$labels = [
+    'email' => 'Email/username',
+    'firstname' => 'Izena',
+    'lastname' => 'Abizena',
+    'city' => 'Hiria',
+    'stateProv' => 'Lurraldea',
+    'country' => 'Herrialdea',
+    'postcode' => 'Postakodea',
+    'telephone' => 'Telefonoa',
+];
+$data = array_fill_keys(array_keys($labels), '');
+$error = [];
+
+if (is_post()) {
+    $input = $_POST['data'] ?? [];
+    [$data, $error] = validate_registration(is_array($input) ? $input : []);
+
+    if (! csrf_valid($_POST['csrf'] ?? null)) {
+        $error['form'] = 'Eskaera ez da baliozkoa. Saiatu berriro.';
     }
-    else {
-        header("Location: index.php");
+
+    $irudia = '';
+    $hasPhoto = is_array($_FILES['imagen'] ?? null) && ($_FILES['imagen']['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_NO_FILE;
+    if ($error === [] && $hasPhoto) {
+        try {
+            $irudia = store_upload($_FILES['imagen'], config()['profiles_dir']);
+        } catch (UploadRejected $rejected) {
+            $error['imagen'] = $rejected->getMessage();
+        }
+    }
+
+    if ($error === []) {
+        try {
+            db()->prepare(
+                'INSERT INTO users (username, password, izena, abizena, hiria, lurraldea, herrialdea, postakodea, telefonoa, irudia)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+            )->execute([
+                $data['email'], hash_password($data['password']), $data['firstname'], $data['lastname'],
+                $data['city'], $data['stateProv'], $data['country'], $data['postcode'], $data['telephone'], $irudia,
+            ]);
+            flash('Kontua sortu da. Orain saioa has dezakezu.');
+            redirect('index.php?action=login');
+        } catch (PDOException $duplicate) {
+            // 23000: the email is already registered (users.username is unique)
+            if ($duplicate->getCode() !== '23000') {
+                throw $duplicate;
+            }
+            delete_image($irudia, config()['profiles_dir']);
+            $error['email'] = 'Email hori erregistratuta dago jada.';
+        }
     }
 }
+
+$field = static function (string $name, string $label, string $type, string $value, string $autocomplete) use ($error): void {
+    ?>
+    <p>
+        <label for="<?= e($name) ?>"><?= e($label) ?>: </label>
+        <input type="<?= e($type) ?>" id="<?= e($name) ?>" name="data[<?= e($name) ?>]" value="<?= e($value) ?>" autocomplete="<?= e($autocomplete) ?>" required>
+        <?php if (isset($error[$name])) { ?><span class="error"><?= e($error[$name]) ?></span><?php } ?>
+    </p>
+    <?php
+};
 ?>
-	<div class="content">
-	<br/>
-	<div class="register">
-
-		<h2>Erregistroa egin</h2>
-		<br/>
-
-		<b>Introduce la información.</b>
-		<br/>
-		<form action="<?php echo $_SERVER['PHP_SELF']."?action=register"; ?>" method="POST" enctype="multipart/form-data">
-			<p>
-				<label>Email/username: </label>
-				<input type="text" name="data[email]" value="<?php echo $data['email']; ?>" />
-				<?php if ($error['email']) echo '<p>', $error['email']; ?>
-			<p>
-			<p>
-				<label>Izena: </label>
-				<input type="text" name="data[firstname]" value="<?php echo $data['firstname']; ?>" />
-				<?php if ($error['firstname']) echo '<p>', $error['firstname']; ?>
-			<p>
-			<p>
-				<label>Abizena: </label>
-				<input type="text" name="data[lastname]" value="<?php echo $data['lastname']; ?>" />
-				<?php if ($error['lastname']) echo '<p>', $error['lastname']; ?>
-			<p>
-			<p>
-				<label>Hiria: </label>
-				<input type="text" name="data[city]" value="<?php echo $data['city']; ?>" />
-				<?php if ($error['city']) echo '<p>', $error['city']; ?>
-			<p>
-			<p>
-				<label>Lurraldea: </label>
-				<input type="text" name="data[stateProv]" value="<?php echo $data['stateProv']; ?>" />
-				<?php if ($error['stateProv']) echo '<p>', $error['stateProv']; ?>
-			<p>
-			<!-- // *** validation: implement a database lookup -->
-			<p>
-				<label>Herrialdea: </label>
-				<input type="text" name="data[country]" value="<?php echo $data['country']; ?>" />
-				<?php if ($error['country']) echo '<p>', $error['country']; ?>
-			<p>
-			<p>
-				<label>Postakodea: </label>
-				<input type="text" name="data[postcode]" value="<?php echo $data['postcode']; ?>" />
-				<?php if ($error['postcode']) echo '<p>', $error['postcode']; ?>
-			<p>
-			<p>
-				<label>Telefonoa: </label>
-				<input type="text" name="data[telephone]" value="<?php echo $data['telephone']; ?>" />
-				<?php if ($error['telephone']) echo '<p>', $error['telephone']; ?>
-			<p>
-			<p>
-				<label>Pasahitza: </label>
-				<input type="text" name="data[password]" value="<?php echo $data['password']; ?>" />
-				<?php if ($error['password']) echo '<p>', $error['password']; ?>
-			<p>
-            <p>
-                <label>Pasahitza errepikatu: </label>
-                <input type="text" name="data[password2]" value="<?php echo $data['password2']; ?>" />
-            <p>
-            <p>
-                <label>Irudia aukeratu:</label>
-                <input name="imagen" type="file" />
-            <p>
-			<p>
-				<input type="reset" name="data[clear]" value="Clear" class="button"/>
-				<input type="submit" name="data[submit]" value="Submit" class="button marL10"/>
-			<p>
-		</form>
-	</div>
+<div class="content">
+<br>
+<div class="register">
+    <h2>Erregistroa egin</h2>
+    <br>
+    <b>Sartu zure datuak.</b>
+    <br>
+    <?php if (isset($error['form'])) { ?><p class="error"><?= e($error['form']) ?></p><?php } ?>
+    <form action="index.php?action=register" method="post" enctype="multipart/form-data">
+        <?= csrf_field() ?>
+        <?php
+        $field('email', $labels['email'], 'email', $data['email'], 'email');
+        $field('firstname', $labels['firstname'], 'text', $data['firstname'], 'given-name');
+        $field('lastname', $labels['lastname'], 'text', $data['lastname'], 'family-name');
+        $field('city', $labels['city'], 'text', $data['city'], 'address-level2');
+        $field('stateProv', $labels['stateProv'], 'text', $data['stateProv'], 'address-level1');
+        $field('country', $labels['country'], 'text', $data['country'], 'country-name');
+        $field('postcode', $labels['postcode'], 'text', $data['postcode'], 'postal-code');
+        $field('telephone', $labels['telephone'], 'tel', $data['telephone'], 'tel');
+        // Never sent back into the page: the browser's password field stays empty after an error
+        $field('password', 'Pasahitza (gutxienez ' . PASSWORD_MIN_LENGTH . ' karaktere)', 'password', '', 'new-password');
+        $field('password2', 'Pasahitza errepikatu', 'password', '', 'new-password');
+        ?>
+        <p>
+            <label for="imagen">Irudia aukeratu (aukerakoa):</label>
+            <input id="imagen" name="imagen" type="file" accept="image/jpeg,image/png,image/gif,image/webp">
+            <?php if (isset($error['imagen'])) { ?><span class="error"><?= e($error['imagen']) ?></span><?php } ?>
+        </p>
+        <p>
+            <input type="reset" value="Clear" class="button">
+            <input type="submit" value="Submit" class="button marL10">
+        </p>
+    </form>
+</div>
 </div>

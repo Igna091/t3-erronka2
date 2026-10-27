@@ -1,86 +1,65 @@
 <?php
-$search="";
-$testua="";
-if (isset($_GET['keyword']) && $_GET['keyword'] != '') {
-    $testua = $_GET['keyword'];
-}
-$search = "'%" . $testua . "%'";
 
+declare(strict_types=1);
 
-$stmt = mysqli_query($conx,"SELECT * FROM produktuak WHERE ". "izena LIKE " . $search . " OR "
-			  . "deskripzioa LIKE " . $search );
-$produktuak = array();
-while ($row = mysqli_fetch_array($stmt)) {
-    $produktuak[] = $row;
-}
+// The catalogue, or the products that match the search word. The word goes to MySQL as a
+// parameter of a prepared statement, and everything shown is escaped.
 
-if(sizeof($produktuak) == 0){
-    echo "<fieldset style=width:500;>";
-    echo "<legend><b>Ez dago produkturik katalogoan ".$testua." deitzen denik</b></legend>";
-    if(isset($_SESSION['admin'])){
-      echo "<div align=center><h3><b><a href=".$_SERVER['PHP_SELF']."?action=updel>Eguneratu</a> katalogoa.</b></h3></div>";
-    }
-    else{
-      echo "<div align=center>
-                <h3>Enpresaren hasierako orria</h3></div>";
-    }
-    echo "</fieldset>";
-}
-else{
-?>
-    <table width=1000 cellpadding=10 cellspacing=10 align=center>
+$testua = is_string($_GET['keyword'] ?? null) ? mb_substr(trim($_GET['keyword']), 0, 30) : '';
+$pattern = like_pattern($testua);
+
+$search = db()->prepare(
+    "SELECT id, izena, deskripzioa, salneurria, pic FROM produktuak
+     WHERE izena LIKE ? ESCAPE '!' OR deskripzioa LIKE ? ESCAPE '!' ORDER BY id"
+);
+$search->execute([$pattern, $pattern]);
+$produktuak = $search->fetchAll();
+$viewer = current_user();
+
+if ($produktuak === []) {
+    ?>
+    <fieldset class="narrow-500">
+    <legend><b>Ez dago produkturik katalogoan<?= $testua !== '' ? ' "' . e($testua) . '" deitzen denik' : '' ?></b></legend>
+    <?php if ($viewer !== null && $viewer['is_admin']) { ?>
+        <div class="center"><h3><b><a href="index.php?action=updel">Eguneratu</a> katalogoa.</b></h3></div>
+    <?php } else { ?>
+        <div class="center"><h3>Enpresaren hasierako orria</h3></div>
+    <?php } ?>
+    </fieldset>
     <?php
-    foreach($produktuak as $data){
-        ?>
-
-        <tr>
-            <td align=center valign=top width=40%>
-                <fieldset>
-                <br>
-                <a href=<?php echo "images/".$data["pic"]; ?>><img src=images/<?php echo $data["pic"]; ?> border=1></a><br>
-                <br>
-                </fieldset>
-            </td>
-            <td valign=top width=60%>
-                <fieldset>
-                    <legend><b>Izena</b></legend>
-                    <br>
-                    <?php echo $data['izena']; echo " - ".$data['salneurria']. "€";?>
-                    <br>
-                </fieldset>
-                <fieldset>
-                    <legend><b>Deskripzioa</b></legend>
-                    <br>
-                    <?php echo $data['deskripzioa']; ?>
-                    <br>
-                </fieldset>
-                <br>
-                <?php
-                if(isset($_SESSION['admin']) && ($_SESSION['admin']==1))
-                    {
-                        if($_SESSION['username'] == 'admin@bdweb'){
-                            ?>
-                            <table width=100% cellpadding=2 cellspacing=2 align=center>
-                            <tr><td width=50% align=left>
-                            <a href=<?php echo $_SERVER['PHP_SELF']."?action=description&pic_id=".$data['id']; ?>><b>Deskripzioa/Salneurria aldatu</b></a>
-                            </td>
-                            </tr>
-                            </table>
-                            <?php
-                        }
-                        else {
-                            echo "<a href='><img src='images/pngegg.png'></a>";
-                        }
-                    }
-                ?>
-            </td>
-        </tr>
-    <?php
-
-    }
-
+    return;
 }
-
 ?>
-
+<table class="catalogue">
+<?php foreach ($produktuak as $data) { ?>
+    <tr>
+        <td class="picture">
+            <fieldset>
+            <br>
+            <a href="images/<?= e($data['pic']) ?>"><img src="images/<?= e($data['pic']) ?>" alt="<?= e($data['izena']) ?>"></a><br>
+            <br>
+            </fieldset>
+        </td>
+        <td class="details">
+            <fieldset>
+                <legend><b>Izena</b></legend>
+                <br>
+                <?= e($data['izena']) ?> - <?= e(price($data['salneurria'])) ?>
+                <br>
+            </fieldset>
+            <fieldset>
+                <legend><b>Deskripzioa</b></legend>
+                <br>
+                <?= nl2br(e($data['deskripzioa'])) ?>
+                <br>
+            </fieldset>
+            <br>
+            <?php if ($viewer !== null && $viewer['is_admin']) { ?>
+                <a href="index.php?action=description&amp;pic_id=<?= (int) $data['id'] ?>"><b>Deskripzioa/Salneurria aldatu</b></a>
+            <?php } elseif ($viewer !== null) { ?>
+                <img src="images/pngegg.png" alt="Saskia">
+            <?php } ?>
+        </td>
+    </tr>
+<?php } ?>
 </table>

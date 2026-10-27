@@ -1,46 +1,43 @@
 <?php
 
-if(isset($_SESSION['admin']) && ($_SESSION['admin']==1)){
+declare(strict_types=1);
 
+// Logging in: a prepared statement, password_verify() against an Argon2id hash, a limit on wrong
+// passwords, the same message whether the email or the password was wrong, and a new session id.
 
-  echo "<div align=center><h5>You are already logged in</h5></div>";
+if (current_user() !== null) {
+    echo '<div class="center"><h5>Saioa hasita duzu jada.</h5></div>';
 
+    return;
 }
-else{
-    if(isset($_POST['submit'])){
-        $creds = mysqli_query($conx,"SELECT * FROM users WHERE username='".$_POST['username']."' AND password='".md5($_POST['password'])."'");
 
-        $creds = mysqli_fetch_array($creds);
-        if($creds){
-            $_SESSION['username'] = $creds['username'];
-            $_SESSION['password'] = $creds['password'];
-            $_SESSION['admin'] = 1;
-            header("Location: ".$_SERVER['PHP_SELF']);
+$error = '';
+$username = '';
+if (is_post()) {
+    $username = post_string('username');
+    if (! csrf_valid($_POST['csrf'] ?? null)) {
+        $error = 'Eskaera ez da baliozkoa. Saiatu berriro.';
+    } else {
+        $result = attempt_login($username, post_string('password'));
+        if ($result === 'ok') {
+            redirect('index.php');
         }
-        else{
-            header("Location: ".$_SERVER['PHP_SELF']."?action=login");
-        }
-
+        $error = $result === 'throttled'
+            ? 'Saiakera oker gehiegi. Itxaron ' . LOGIN_FAILURE_MINUTES . ' minutu eta saiatu berriro.'
+            : 'Erabiltzailea edo pasahitza ez da zuzena.';
     }
-    else{
-
-  ?>
-
-  <div align=center>
-    <fieldset style=width:300;>
+}
+?>
+<div class="center">
+    <fieldset class="narrow">
     <legend><b>Login</b></legend>
-        <form action="<?php echo $_SERVER['PHP_SELF']."?action=login"; ?>" method="post">
+        <?php if ($error !== '') { ?><p class="error"><?= e($error) ?></p><?php } ?>
+        <form action="index.php?action=login" method="post">
+            <?= csrf_field() ?>
             <br>
-            Username/Email: <input type=text name=username><br>
-            Password: <input type=password name=password><br>
-            <br><input type=submit name="submit" value=Login><br>
+            <label for="username">Username/Email:</label> <input type="email" id="username" name="username" value="<?= e($username) ?>" maxlength="254" autocomplete="username" required><br>
+            <label for="password">Password:</label> <input type="password" id="password" name="password" maxlength="128" autocomplete="current-password" required><br>
+            <br><input type="submit" value="Login"><br>
         </form>
     </fieldset>
-  </div>
-
-  <?php
-
-    }
-}
-
-?>
+</div>

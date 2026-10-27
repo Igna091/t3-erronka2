@@ -1,0 +1,19 @@
+{
+    "name": "erronka2/ekoizpengehigarriak",
+    "description": "The shop's test and static analysis tools. The app itself has no dependencies; the tools are installed only in the image's dev stage (web/Dockerfile).",
+    "type": "project",
+    "license": "proprietary",
+    "require": {
+        "php": "^8.5"
+    },
+    "config": {
+        "platform": {
+            "php": "8.5.12"
+        },
+        "sort-packages": true
+    },
+    "require-dev": {
+        "phpstan/phpstan": "^2.3",
+        "phpunit/phpunit": "^13.4"
+    }
+}

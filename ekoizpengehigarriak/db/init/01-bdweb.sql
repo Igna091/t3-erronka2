@@ -1,111 +1,63 @@
--- phpMyAdmin SQL Dump
--- version 5.1.1
--- https://www.phpmyadmin.net/
---
--- Servidor: 127.0.0.1
--- Tiempo de generación: 14-11-2021 a las 18:26:04
--- Versión del servidor: 10.4.21-MariaDB
--- Versión de PHP: 8.0.12
+-- BDweb, the shop's database. MySQL runs this once, on the first start with an empty volume,
+-- in the database named by MYSQL_DATABASE (compose.yaml). What changed from the original
+-- phpMyAdmin dump, and why, is in CHANGES.md.
 
-SET SQL_MODE = "NO_AUTO_VALUE_ON_ZERO";
-START TRANSACTION;
-SET time_zone = "+00:00";
+SET NAMES utf8mb4;
 
-
-/*!40101 SET @OLD_CHARACTER_SET_CLIENT=@@CHARACTER_SET_CLIENT */;
-/*!40101 SET @OLD_CHARACTER_SET_RESULTS=@@CHARACTER_SET_RESULTS */;
-/*!40101 SET @OLD_COLLATION_CONNECTION=@@COLLATION_CONNECTION */;
-/*!40101 SET NAMES utf8mb4 */;
-
---
--- Base de datos: `bdweb`
---
-
--- --------------------------------------------------------
-
---
--- Estructura de tabla para la tabla `produktuak`
---
-
-CREATE TABLE `produktuak` (
-  `id` int(11) NOT NULL,
-  `izena` varchar(30) NOT NULL,
-  `deskripzioa` varchar(150) NOT NULL,
-  `salneurria` float NOT NULL,
-  `pic` varchar(60) NOT NULL,
-  `stock` int(5) NOT NULL
+CREATE TABLE produktuak (
+  id int NOT NULL AUTO_INCREMENT,
+  izena varchar(30) NOT NULL,
+  deskripzioa varchar(150) NOT NULL,
+  -- Money as an exact decimal, not a float
+  salneurria decimal(8,2) NOT NULL,
+  pic varchar(60) NOT NULL,
+  stock int NOT NULL DEFAULT 0,
+  PRIMARY KEY (id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
---
--- Volcado de datos para la tabla `produktuak`
---
+INSERT INTO produktuak (id, izena, deskripzioa, salneurria, pic, stock) VALUES
+(1, 'produktu 1', 'produktu 1ren deskripzioa', 12.00, 'generikoa.jpg', 5),
+(2, 'produktu 2', 'produktu 2ren deskripzioa', 10.00, 'generikoa.jpg', 7),
+(4, 'produktu 3', 'hirugarrena da, etiketa barik', 8.00, 'producto3.jpg', 3);
 
-INSERT INTO `produktuak` (`id`, `izena`, `deskripzioa`, `salneurria`, `pic`, `stock`) VALUES
-(1, 'produktu 1', '            produktu 1ren deskripzioa        ', 12, 'generikoa.jpg', 5),
-(2, 'produktu 2', 'produktu 2ren deskripzioa', 10, 'generikoa.jpg', 7),
-(4, 'produktu 3', 'hirugarrena da, etiketa barik', 8, 'producto3.jpg', 3);
-
--- --------------------------------------------------------
-
---
--- Estructura de tabla para la tabla `users`
---
-
-CREATE TABLE `users` (
-  `id` mediumint(9) NOT NULL,
-  `username` varchar(30) NOT NULL,
-  `password` varchar(60) NOT NULL,
-  `izena` varchar(30) NOT NULL,
-  `abizena` varchar(60) NOT NULL,
-  `hiria` varchar(60) NOT NULL,
-  `lurraldea` varchar(60) NOT NULL,
-  `herrialdea` varchar(30) NOT NULL,
-  `postakodea` int(5) NOT NULL,
-  `telefonoa` int(9) NOT NULL,
-  `irudia` varchar(60) NOT NULL
+CREATE TABLE users (
+  id mediumint NOT NULL AUTO_INCREMENT,
+  -- The email; long enough for any address, and unique, so it can't be registered twice
+  username varchar(254) NOT NULL,
+  -- An Argon2id hash from password_hash(); the original's varchar(60) held unsalted MD5
+  password varchar(255) NOT NULL,
+  -- Who is an admin is stored, instead of comparing usernames in the code
+  is_admin tinyint(1) NOT NULL DEFAULT 0,
+  -- Goes up when the password changes, which logs out every other session
+  session_version int NOT NULL DEFAULT 0,
+  izena varchar(60) NOT NULL,
+  abizena varchar(60) NOT NULL DEFAULT '',
+  hiria varchar(60) NOT NULL DEFAULT '',
+  lurraldea varchar(60) NOT NULL DEFAULT '',
+  herrialdea varchar(60) NOT NULL DEFAULT '',
+  -- Text, not int: 01001 (Gasteiz) keeps its zero, and a phone can start with +
+  postakodea char(5) NOT NULL DEFAULT '',
+  telefonoa varchar(15) NOT NULL DEFAULT '',
+  -- A file in storage/perfiles, outside the web root
+  irudia varchar(60) NOT NULL DEFAULT '',
+  PRIMARY KEY (id),
+  UNIQUE KEY users_username (username)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
---
--- Volcado de datos para la tabla `users`
---
+-- The original two accounts, without a password that works: '!' is no hash, so no password
+-- matches it. Give one a password with bin/set-password.php (README.md). The original shipped
+-- both with the password "password", as unsalted MD5.
+INSERT INTO users (id, username, password, is_admin, izena, abizena, hiria, lurraldea, herrialdea, postakodea, telefonoa, irudia) VALUES
+(1, 'admin@bdweb', '!', 1, 'admin', '', 'eibar', 'gipuzkoa', 'euskal herria', '20600', '121212121', 'Soy_Admin.jpg'),
+(2, 'izaskun@uni.eus', '!', 0, 'izaskun', 'ffff', 'ss', 'ddd', 'España', '48280', '121232343', 'usuario.jpg');
 
-INSERT INTO `users` (`id`, `username`, `password`, `izena`, `abizena`, `hiria`, `lurraldea`, `herrialdea`, `postakodea`, `telefonoa`, `irudia`) VALUES
-(1, 'admin@bdweb', '5f4dcc3b5aa765d61d8327deb882cf99', 'admin', '', 'eibar', 'gipuzkoa', 'euskal herria', 20600, 121212121, 'Soy_Admin.png'),
-(2, 'izaskun@uni.eus', '5f4dcc3b5aa765d61d8327deb882cf99', 'izaskun', 'ffff', 'ss', 'ddd', 'España', 48280, 121232343, 'usuario.jpg');
-
---
--- Índices para tablas volcadas
---
-
---
--- Indices de la tabla `produktuak`
---
-ALTER TABLE `produktuak`
-  ADD PRIMARY KEY (`id`);
-
---
--- Indices de la tabla `users`
---
-ALTER TABLE `users`
-  ADD PRIMARY KEY (`id`);
-
---
--- AUTO_INCREMENT de las tablas volcadas
---
-
---
--- AUTO_INCREMENT de la tabla `produktuak`
---
-ALTER TABLE `produktuak`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=5;
-
---
--- AUTO_INCREMENT de la tabla `users`
---
-ALTER TABLE `users`
-  MODIFY `id` mediumint(9) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=3;
-COMMIT;
-
-/*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;
-/*!40101 SET CHARACTER_SET_RESULTS=@OLD_CHARACTER_SET_RESULTS */;
-/*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
+-- Wrong passwords, counted per account and per IP to slow down guessing (lib/auth.php)
+CREATE TABLE login_failures (
+  id bigint NOT NULL AUTO_INCREMENT,
+  username varchar(254) NOT NULL,
+  ip varchar(45) NOT NULL,
+  failed_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  KEY login_failures_username (username, failed_at),
+  KEY login_failures_ip (ip, failed_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

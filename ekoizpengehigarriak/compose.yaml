@@ -1,0 +1,126 @@
+# ekoizpengehigarriak: the shop in two containers, the web server (Apache with PHP) and the
+# database (MySQL). From this folder:
+#   bash scripts/init-secrets.sh && docker compose up -d --build --wait
+# then https://localhost:8443 (README.md).
+#
+# Images are pinned by digest. To bump one, change the tag and the digest together:
+#   docker buildx imagetools inspect <image>:<tag>
+
+name: ekoizpengehigarriak
+
+# Every container: read-only root filesystem, no Linux capabilities, no privilege escalation,
+# rotated logs
+x-hardening: &hardening
+  read_only: true
+  cap_drop: [ALL]
+  security_opt: ["no-new-privileges:true"]
+  restart: unless-stopped
+  logging:
+    driver: json-file
+    options: { max-size: "10m", max-file: "3" }
+
+services:
+  web:
+    <<: *hardening
+    build:
+      context: .
+      dockerfile: web/Dockerfile
+      target: runtime
+    image: ekoizpengehigarriak-web:dev
+    user: "33:33"
+    ports:
+      - "${HTTP_PORT:-8080}:8080"
+      - "${HTTPS_PORT:-8443}:8443"
+    environment:
+      DB_HOST: mysql
+      DB_NAME: bdweb
+      DB_USER: bdweb_app
+      DB_PASSWORD_FILE: /run/secrets/db_app_password
+      # Where the HTTP port sends browsers
+      SERVER_NAME: ${SERVER_NAME:-localhost}
+      HTTPS_PORT: ${HTTPS_PORT:-8443}
+    secrets: [db_app_password, tls_crt, tls_key]
+    volumes:
+      # The only places the web server can write: uploaded pictures, kept across restarts
+      - images:/var/www/app/public/images
+      - profiles:/var/www/app/storage/perfiles
+    tmpfs:
+      # Sessions, uploads in progress, and Apache's pid and lock files
+      - /tmp
+      - /var/run/apache2
+      - /var/lock/apache2
+    networks: [frontend, backend]
+    depends_on:
+      mysql:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsk", "-o", "/dev/null", "https://localhost:8443/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    deploy:
+      resources:
+        limits: { cpus: "1.0", memory: 384M, pids: 100 }
+
+  # The service name is the host the app connects to (src/conf.php): mysql, not localhost
+  mysql:
+    <<: *hardening
+    image: mysql:8.4.13@sha256:76f0358884cb92d9a086d24e5671c38048d3fef40f2588703d73eb55392d6b69
+    # MySQL's own user from the start, so the entrypoint needs no capability to switch to it
+    user: "999:999"
+    command:
+      # No reading or writing files on the server or the client from SQL, and logins matched
+      # by IP, not by reverse DNS
+      - --local-infile=0
+      - --secure-file-priv=NULL
+      - --skip-name-resolve
+    environment:
+      MYSQL_DATABASE: bdweb
+      MYSQL_ROOT_PASSWORD_FILE: /run/secrets/db_root_password
+      # root can log in only from inside this container; the app has its own user (db/init)
+      MYSQL_ROOT_HOST: localhost
+    secrets: [db_root_password, db_app_password]
+    volumes:
+      - dbdata:/var/lib/mysql
+      - ./db/init:/docker-entrypoint-initdb.d:ro
+    tmpfs:
+      - /var/run/mysqld:uid=999,gid=999
+      - /tmp:uid=999,gid=999
+    networks: [backend]
+    healthcheck:
+      # Over TCP, which MySQL opens only once its first-start setup is done
+      test: ["CMD", "mysqladmin", "ping", "--protocol=tcp", "-h", "127.0.0.1", "--silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+    deploy:
+      resources:
+        limits: { cpus: "1.0", memory: 768M, pids: 200 }
+
+networks:
+  frontend: {}
+  # Internal: MySQL has no route out and only the web server reaches it. The app's MySQL user
+  # may log in only from this subnet (db/init/02-app-user.sh).
+  backend:
+    internal: true
+    ipam:
+      config:
+        - subnet: 172.29.40.0/24
+
+volumes:
+  dbdata: {}
+  images: {}
+  profiles: {}
+
+# Created by scripts/init-secrets.sh, and ignored by git
+secrets:
+  db_root_password:
+    file: ./secrets/db_root_password
+  db_app_password:
+    file: ./secrets/db_app_password
+  tls_crt:
+    file: ./secrets/tls.crt
+  tls_key:
+    file: ./secrets/tls.key
