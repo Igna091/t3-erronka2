@@ -106,6 +106,11 @@ printf 'APP_URL=https://www.guenaga.eus\n' > .env
 # The deploy script, outside the checkout, so a deploy can't change the script it runs as root
 install -o root -g root -m 0755 scripts/deploy.sh /usr/local/sbin/guenaga-deploy
 
+# The weekly photo reminder (#22): Mondays at 10:00, Madrid time (python/README.md)
+install -o root -g root -m 0644 systemd/guenaga-photo-reminder.service systemd/guenaga-photo-reminder.timer /etc/systemd/system/
+systemctl daemon-reload
+systemctl enable --now guenaga-photo-reminder.timer
+
 # A user that can run that script and nothing else; the docker group stays empty
 useradd --create-home --shell /bin/bash deploy
 echo 'deploy ALL=(root) NOPASSWD: /usr/local/sbin/guenaga-deploy' > /etc/sudoers.d/guenaga-deploy
@@ -134,6 +139,10 @@ throwaway Docker config, never root's.
 Then the first release: Actions → Deploy → Run workflow, or push a tag.
 
 Whenever `scripts/deploy.sh` changes in the repo, install it again on web01 (the `install` line).
+The same goes for `systemd/`: the `install` line again, then `systemctl daemon-reload`.
+
+`systemctl list-timers guenaga-photo-reminder.timer` shows when the reminder runs next, and
+`journalctl -u guenaga-photo-reminder` what it did, user numbers only.
 
 ## When Trivy fails
 

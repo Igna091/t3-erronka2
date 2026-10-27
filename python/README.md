@@ -9,9 +9,11 @@ with TLS:
 | `verify_email` | An account is opened, or its email changed: the link that confirms the address |
 | `reset_password` | Someone asks for a new password: the link to choose one |
 | `security_alert` | A login from a new browser, a password changed or reset, 2-step verification turned on or off, a recovery code used |
+| `photo_reminder` | Every Monday, to each user with a confirmed email and no profile photo ([The photo reminder](#the-photo-reminder)) |
 
 It runs as the `mailer` service of
 [web/compose.yaml](../web/compose.yaml), next to Mailpit, which catches the emails for the demo.
+The photo reminder is the same image run once a week as the `photo-reminder` job.
 
 ```
 Laravel ── same transaction as the payment ──► email_outbox ◄── mailer ── STARTTLS + login ──► Mailpit
@@ -45,11 +47,11 @@ goes again. Every attempt carries the same `Message-ID`, so mail clients show it
 
 | What | How |
 |---|---|
-| Database | The `mailer` role may `SELECT` the outbox's content columns and `UPDATE` only its delivery columns ([migration](../web/laravel/database/migrations/2026_10_26_100002_create_email_outbox_table.php)). It can't read `orders`, see which order or account a row belongs to, add or delete rows, or create tables |
+| Database | The `mailer` role may `SELECT` the outbox's content columns and `UPDATE` only its delivery columns ([migration](../web/laravel/database/migrations/2026_10_26_100002_create_email_outbox_table.php)). It can't read `users` or `orders`, see which order or account a row belongs to, add or delete rows, or create tables. The photo reminder logs in as `reminder` instead, which may only read five columns of `users`, in read-only sessions |
 | TLS | STARTTLS on every connection (`MAIL_SCHEME=smtps` for TLS from the first byte); there is no unencrypted setting. The certificate must chain to `MAIL_CA_FILE` and match `MAIL_HOST`, with Python's strict X.509 checks. A server that doesn't offer STARTTLS gets nothing |
 | Mailpit | Requires STARTTLS and the mailer's login; refuses plain text, a login before TLS and a wrong password. Its inbox listens on 127.0.0.1 only and answers only to `localhost` Host headers, against DNS rebinding. Optionally it forwards a copy of every email to the team's own inbox (web/README.md); the mailer itself still has no route out |
 | Injection | The HTML is autoescaped, so a name or a medicine can't add markup or links. A line break or other control character in a name or address fails that email instead of adding headers such as `Bcc`. The templates are files in the image; the payload is only data |
-| Logs | The email's number, kind and order reference; never a name or an address |
+| Logs | The email's number, kind and order reference, or the reminded user's number; never a name or an address |
 | Container | Unprivileged user (uid 10001), read-only root filesystem, no pip, all capabilities dropped, memory, CPU and PID limits. Its two networks are internal, so it has no route out |
 | Supply chain | Base image pinned by digest; every library installed from a wheel whose hash is in `requirements.txt` |
 
@@ -57,16 +59,18 @@ goes again. Every attempt carries the same `Message-ID`, so mail clients show it
 
 | Path | What |
 |---|---|
-| `mailer/cli.py` | `python -m mailer`: the loop, or one pass with `--once` |
+| `mailer/cli.py` | `python -m mailer`: the loop, one pass with `--once`, or the photo reminder with `--remind-photos` |
 | `mailer/worker.py` | One pass over the outbox: send, retry or give up |
-| `mailer/outbox.py` | The SQL, and the database's errors turned into one clear message |
+| `mailer/outbox.py` | The outbox's SQL |
+| `mailer/reminders.py` | The photo reminder: the selection, the email and the run |
+| `mailer/database.py` | The connection to PostgreSQL, and its errors turned into one clear message |
 | `mailer/message.py`, `mailer/render.py` | The email: headers, then subject, text and HTML from the templates |
 | `mailer/smtp.py` | `smtplib` with STARTTLS, certificate checks and the login |
 | `mailer/config.py` | Settings from the environment |
 | `mailer/heartbeat.py` | Docker's health check |
 | `mailer/templates/order_confirmation/` | The order email: `subject.txt`, `body.txt`, `body.html` |
-| `mailer/templates/verify_email/`, `reset_password/`, `security_alert/` | The account emails; the HTML extends `_layout/account.html`, and an alert's subject and first sentence depend on the event |
-| `tests/` | Unit tests; the database and the mail server are faked |
+| `mailer/templates/verify_email/`, `reset_password/`, `security_alert/`, `photo_reminder/` | The account emails; the HTML extends `_layout/account.html`, and an alert's subject and first sentence depend on the event |
+| `tests/` | Unit tests; the mail server is faked, and so is the database, except that the photo reminder's selection runs on SQLite |
 | `Dockerfile` | `base` → `dev` (pytest) → `runtime` |
 
 ## Settings
@@ -82,6 +86,7 @@ goes again. Every attempt carries the same `Message-ID`, so mail clients show it
 | `MAIL_FROM_ADDRESS`, `MAIL_FROM_NAME` | `no-reply@guenaga.eus`, `Guenaga Farmazeutika` | |
 | `MAILER_POLL_SECONDS` | `5` | Default 10 |
 | `MAILER_MAX_ATTEMPTS` | `8` | Default 8 |
+| `SITE_URL` | `https://www.guenaga.eus` | Only the photo reminder needs it, for its link to the profile page |
 | `LOG_LEVEL` | `info` | |
 
 ## Running it
@@ -125,9 +130,37 @@ docker run --rm -v "$PWD:/src" -w /src python:3.14.9-slim-trixie sh -c '
   pip-compile -q --generate-hashes --strip-extras --allow-unsafe --no-emit-index-url -o requirements-dev.txt requirements-dev.in'
 ```
 
-## Still to do for #22
+## The photo reminder
 
-The brief also asks for a reminder to website users who have no profile image. The accounts
-exist now (#19), with the photo on the profile page. The `mailer` role can already read `id`,
-`name`, `email` and `profile_image` from `users` for it. The plan is a daily `--remind-photos`
-pass in this package, with its own templates, and a unit test for the selection.
+Once a week, every user whose email is confirmed and whose account has no photo
+(`profile_image` NULL, empty or only spaces) gets a personal email with a button to the profile
+page. Unconfirmed addresses are left out, or anyone could have the pharmacy write every week to
+an address they typed in.
+
+- **Read-only:** it logs in as `reminder`, which may only read `id`, `name`, `email`,
+  `profile_image` and `email_verified_at` of `users`, and whose sessions are read-only
+  ([02-reminder-role.sh](../web/db/init/02-reminder-role.sh)), so it can't change anything. That
+  also means it can't remember whom it wrote to: a user gets one every Monday until the account
+  has a photo.
+- **Sending:** the same code as the other emails, so smtplib over STARTTLS with the certificate
+  checks. A user the mail server turns down is skipped until the next week; if the database or
+  the mail server is down, the run logs one line and exits with status 1.
+- **The selection** is one SQL query (`WITHOUT_PHOTO` in `mailer/reminders.py`). The unit tests
+  run that same query on SQLite, with users with and without photos, confirmed or not.
+- **Schedule:** on web01 a systemd timer runs it on Mondays at 10:00, Madrid time
+  ([../web/systemd/](../web/systemd/), installed as [DEPLOY.md](../web/DEPLOY.md) shows).
+
+From `web/`:
+
+```sh
+docker compose run --rm photo-reminder        # one run now, as the timer does it
+```
+
+On a database created before the role existed, create it once, then run the reminder:
+
+```sh
+docker compose up -d                          # the db container gets the new password secret
+docker compose exec db bash /docker-entrypoint-initdb.d/02-reminder-role.sh
+```
+
+In Git Bash, prefix that second line with `MSYS_NO_PATHCONV=1`.

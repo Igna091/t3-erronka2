@@ -111,6 +111,8 @@ Configuration comes from `compose.yaml`, not `.env`; secrets are read from `/run
 | Profile photos aren't public | `curl -sk -o /dev/null -w '%{http_code}' https://localhost/account/profile/photo` | `302` (to the login page) |
 | Mailpit refuses plain text | `docker compose exec mailer python -c "import smtplib; smtplib.SMTP('mailpit', 1025).sendmail('a@guenaga.eus', ['b@example.com'], 'x')"` | `530 … Must issue a STARTTLS command first` |
 | The mailer can't read orders | `docker compose exec db psql -U postgres -d guenaga -c 'SET ROLE mailer' -c 'SELECT email FROM orders'` | `permission denied for table orders` |
+| The photo reminder only reads (#22) | `docker compose exec db psql -U postgres -d guenaga -c 'SET ROLE reminder' -c 'SELECT password FROM users'`, then the same with `UPDATE users SET name = name` | `permission denied for table users` both times |
+| Photo reminders go out (#22) | `docker compose run --rm photo-reminder`, then open http://localhost:8025 | `N user(s) without a photo: reminded N, skipped 0`; an "add a photo" email for each confirmed account without a photo |
 | The mailer has no internet | `docker compose exec mailer python -c "import socket; socket.create_connection(('1.1.1.1', 443), 4)"` | `Network is unreachable` |
 | A down mail server is logged, not a crash | `docker compose stop mailpit`, place an order, `docker compose logs mailer` | `Can't reach the mail server at mailpit:1025: …`, no traceback; `docker compose start mailpit` and it goes out |
 
@@ -136,6 +138,7 @@ shell out (`about`, `schedule:run`, `db`) fail inside the runtime container. Run
 | `../python/` | The mailer: its code, tests and Dockerfile |
 | `scripts/dev-init.sh` | Creates `secrets/`, including Mailpit's certificate and the throwaway CA the mailer trusts |
 | `scripts/deploy.sh` | Deploys a release on web01, or rolls back; installed there as `guenaga-deploy` ([DEPLOY.md](DEPLOY.md)) |
+| `systemd/` | The weekly timer that runs the photo reminder on web01 ([DEPLOY.md](DEPLOY.md)) |
 | `DEPLOY.md` | CI/CD: checks, image scans, GHCR, deploying, rollback and disaster recovery |
 | `../.github/workflows/` | The CI, Deploy and Rollback workflows |
 
@@ -244,7 +247,8 @@ What the pentest and the GRC work should know:
 | `postgres` | Everything, but only from inside the db container: `docker compose exec db psql -U postgres -d guenaga` | Admins |
 | `migrator` | Owns the tables; the only role with DDL | The `migrate` service |
 | `app` | Read and write rows in the migrator's tables; no DDL | The Laravel site |
-| `mailer` | `SELECT` on the content columns of `email_outbox` and `UPDATE` on its delivery columns; `SELECT` on `id`, `name`, `email`, `profile_image` of `users`. Nothing else, so not `orders` (granted by migrations) | The Python mailer (#22) |
+| `mailer` | `SELECT` on the content columns of `email_outbox` and `UPDATE` on its delivery columns. Nothing else, so not `users` or `orders` (granted by migrations) | The Python mailer (#22) |
+| `reminder` | `SELECT` on `id`, `name`, `email`, `profile_image`, `email_verified_at` of `users`, nothing else, and its sessions are read-only. Created by `db/init/02-reminder-role.sh` | The weekly photo reminder (#22) |
 
 ## Moving to web01
 
@@ -267,5 +271,4 @@ Deploy workflow; [DEPLOY.md](DEPLOY.md) has the set-up, rollback and disaster re
 - **#19:** accounts are done ([Accounts](#accounts)). Still to build: sending a photo of a prescription from the account, which the overview says comes next. Until then the "Send a prescription" buttons take guests to the login page and logged-in customers to their account, which gives the phone number.
 - **#20:** add ModSecurity with the OWASP CRS, for example by swapping Nginx for `owasp/modsecurity-crs:nginx`, which also runs unprivileged on 8080/8443. It is OWASP's image rather than a Docker Official Image, so record that exception. Save the `testssl.sh` and header results in `evidence/`.
 - **#21:** CI/CD is in place ([DEPLOY.md](DEPLOY.md)); what's left is setting up the runner in U1-IT and web01, then testing a deploy and a rollback for the evidence. If the site ever adds Vite assets, CI must build them and Nginx must get `public/build` from the image instead of the bind mount.
-- **#22:** the mailer sends the order and account emails. The brief's reminder to users without a
-  profile image is still to do, now that there are accounts; [../python/README.md](../python/README.md) has the plan.
+- **#22:** the mailer sends the order and account emails, and the photo reminder runs weekly. What's left is installing its timer on web01 with the rest ([DEPLOY.md](DEPLOY.md)).

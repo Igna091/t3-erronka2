@@ -1,0 +1,17 @@
+# The reminder to add a profile photo (#22): runs the stack's photo-reminder job once and exits.
+# Started every week by guenaga-photo-reminder.timer; DEPLOY.md shows how to install both.
+# Its output goes to the journal and to syslog as guenaga-photo-reminder, for Wazuh.
+
+[Unit]
+Description=Guenaga: email the users without a profile photo
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/guenaga/web
+# --no-deps: the stack is already running. If the database or Mailpit isn't, the job says so
+# in one line and the unit fails, which systemctl --failed shows.
+ExecStart=/usr/bin/docker compose run --rm --no-deps --no-TTY photo-reminder
+SyslogIdentifier=guenaga-photo-reminder
+TimeoutStartSec=15min
