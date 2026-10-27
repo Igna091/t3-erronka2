@@ -60,11 +60,13 @@ real in `web/.env` (ignored by git) and run `docker compose up -d mailpit` again
 delivers each email whose address matches, through the same Gmail login:
 
 ```sh
-MAILPIT_DELIVER_TO='^(ane@gmail\.com|jon@uni\.eus)$'   # a regular expression; unset: nobody
+MAILPIT_DELIVER_TO='(?i)@(gmail\.com|hotmail\.(com|es)|proton\.me|uni\.eus)$'   # a regular expression; unset: nobody
 ```
 
-Keep it to the team's own addresses. `.*` would let anyone who signs up with someone else's
-address make the team's Gmail write to them, and Gmail sends at most 500 emails a day.
+Whole providers like that are fine on your own machine, where only you reach the site. On web01
+list only the team's own addresses (`'^(ane@gmail\.com|jon@uni\.eus)$'`): anyone can sign up
+there, so a whole provider would let them make the team's Gmail write to strangers, and Gmail
+stops at 500 emails a day.
 
 - **Reset the database:** `docker compose down -v` deletes the data and the uploads, so `db/init` runs again on the next start.
 - **Ports 80/443 taken:** set `HTTP_PORT` and `HTTPS_PORT` (PowerShell: `$env:HTTPS_PORT=8443`), then browse to https://localhost:8443 directly, because the HTTP redirect always points at 443. Mailpit's port is `MAILPIT_PORT`.
