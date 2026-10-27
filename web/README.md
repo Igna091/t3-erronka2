@@ -31,6 +31,7 @@ start WSL instead of Git Bash, so run the script from a Git Bash window.
 ```sh
 cd web
 bash scripts/dev-init.sh              # APP_KEY, passwords and dev certificates in web/secrets/ (gitignored)
+cp .env.example .env                  # this machine's settings (gitignored); the defaults work as they are
 docker compose up -d --build --wait
 ```
 
@@ -56,7 +57,7 @@ override-from: zibereibar@gmail.com   # Gmail only sends as the account itself
 Empty the file again to stop forwarding.
 
 Forwarding never reaches the person an email is written to. For that, list who may get emails for
-real in `web/.env` (ignored by git) and run `docker compose up -d mailpit` again. Mailpit then also
+real in `web/.env` (ignored by git; `.env.example` has both lines below to uncomment) and run `docker compose up -d mailpit` again. Mailpit then also
 delivers each email whose address matches, through the same Gmail login:
 
 ```sh
@@ -253,7 +254,7 @@ Deploy workflow; [DEPLOY.md](DEPLOY.md) has the set-up, rollback and disaster re
 1. Apply the host baseline in [docker/README.md](../docker/README.md).
 2. Put the Infra TLS CA certificate and key for `www.guenaga.eus` (#10) in `secrets/tls.crt` and `secrets/tls.key`, then run `scripts/dev-init.sh`. It keeps existing files and only creates the key and passwords.
 3. Lock the folder: as root, `chmod 700 secrets` and leave the files `0644`. Host users can't open the folder, but Docker bind-mounts each file on its own, so the containers can still read them, including under `userns-remap`.
-4. Put `APP_URL=https://www.guenaga.eus` in `web/.env`. web01's own settings go there and in `secrets/`, both ignored by git; tracked files stay as they are in the release, or the deploy refuses to run. Nginx answers for any name (`server_name _`), so it needs no change.
+4. Copy `.env.example` to `web/.env`, set `APP_URL=https://www.guenaga.eus` and, for real emails, the web01 `MAILPIT_DELIVER_TO` line with the team's addresses. web01's own settings go there and in `secrets/`, both ignored by git; tracked files stay as they are in the release, or the deploy refuses to run. Nginx answers for any name (`server_name _`), so it needs no change.
 5. Mail: for the demo, Mailpit stays, and its inbox is reached through an SSH tunnel
    (`ssh -L 8025:127.0.0.1:8025 web01`). Its certificate (`secrets/mailpit.crt` and `.key`, for the
    name `mailpit`) can come from the Infra TLS CA, with that CA's certificate in
