@@ -1,0 +1,17 @@
+# Renews the Infra TLS CA's CRL and copies it to pki-pub. A CRL lasts 7 days, so a client that
+# can't fetch a fresh one treats every certificate as unchecked; the timer runs this daily.
+[Unit]
+Description=Guenaga Infra TLS CA: renew and publish the CRL
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/guenaga-ca crl
+# It writes only the CA's data, and reads its key's passphrase from /etc
+ProtectSystem=strict
+ReadWritePaths=/var/lib/guenaga-ca
+ProtectHome=yes
+PrivateTmp=yes
+NoNewPrivileges=yes
+SyslogIdentifier=guenaga-ca

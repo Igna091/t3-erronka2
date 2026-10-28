@@ -105,6 +105,8 @@ jobs:
           persist-credentials: false
       - name: ShellCheck
         run: shellcheck web/scripts/*.sh web/db/init/*.sh ekoizpengehigarriak/scripts/*.sh ekoizpengehigarriak/db/init/*.sh
+      - name: ShellCheck (the PKI scripts)
+        run: shellcheck pki/root/root-ca.sh pki/ca01/setup.sh pki/infra-tls/guenaga-ca
       - name: actionlint (these workflows, and ShellCheck on their scripts)
         run: docker run --rm --volume "$GITHUB_WORKSPACE:/repo:ro" --workdir /repo "$ACTIONLINT_IMAGE" -no-color
       - name: The deploy script (deploy, rollback, refusals)

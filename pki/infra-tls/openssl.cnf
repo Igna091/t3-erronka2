@@ -1,0 +1,75 @@
+# Guenaga Infra TLS CA (issue #9), on ca01: the certificates of the website and of everything that
+# isn't in the domain (pfSense, the IPsec gateways, the MikroTiks, the hypervisor, Wazuh).
+# guenaga-ca drives it; it sets CA_DIR and SAN on every call.
+
+[ default ]
+ca_dir  = ${ENV::CA_DIR}
+pki_url = http://pki.guenaga.lan
+
+[ ca ]
+default_ca = infra_tls
+
+[ infra_tls ]
+dir              = $ca_dir
+database         = $dir/index.txt
+new_certs_dir    = $dir/newcerts
+serial           = $dir/serial
+crlnumber        = $dir/crlnumber
+certificate      = $dir/certs/infra-tls.crt
+private_key      = $dir/private/infra-tls.key
+default_md       = sha256
+# A leaf lasts at most 397 days (browsers refuse more than 398); the CRL, 7 days
+default_days     = 397
+default_crl_days = 7
+crl_extensions   = crl_ext
+unique_subject   = no
+# The names on a certificate come from the command line (SAN), never from the request
+copy_extensions  = none
+policy           = policy_leaf
+email_in_dn      = no
+name_opt         = ca_default
+cert_opt         = ca_default
+
+[ policy_leaf ]
+countryName            = optional
+organizationName       = optional
+organizationalUnitName = optional
+commonName             = supplied
+
+# The CA's own request, which the root signs
+[ req ]
+default_bits       = 4096
+default_md         = sha256
+distinguished_name = infra_tls_dn
+prompt             = no
+string_mask        = utf8only
+
+[ infra_tls_dn ]
+C  = ES
+O  = Guenaga Farmazeutika
+CN = Guenaga Infra TLS CA
+
+# A server: HTTPS, LDAPS, the RADIUS EAP certificate
+[ server ]
+basicConstraints       = critical, CA:false
+keyUsage               = critical, digitalSignature, keyEncipherment
+extendedKeyUsage       = serverAuth
+subjectAltName         = ${ENV::SAN}
+subjectKeyIdentifier   = hash
+authorityKeyIdentifier = keyid, issuer
+crlDistributionPoints  = URI:$pki_url/crl/infra-tls.crl
+authorityInfoAccess    = caIssuers;URI:$pki_url/ca/infra-tls.crt
+
+# An IPsec gateway (vpn-en, vpn-u1): also ipsecIKE (1.3.6.1.5.5.7.3.17)
+[ ipsec ]
+basicConstraints       = critical, CA:false
+keyUsage               = critical, digitalSignature, keyEncipherment
+extendedKeyUsage       = serverAuth, 1.3.6.1.5.5.7.3.17
+subjectAltName         = ${ENV::SAN}
+subjectKeyIdentifier   = hash
+authorityKeyIdentifier = keyid, issuer
+crlDistributionPoints  = URI:$pki_url/crl/infra-tls.crl
+authorityInfoAccess    = caIssuers;URI:$pki_url/ca/infra-tls.crt
+
+[ crl_ext ]
+authorityKeyIdentifier = keyid:always

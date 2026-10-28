@@ -1,0 +1,263 @@
+#!/usr/bin/env bash
+# guenaga-ca: the Guenaga Infra TLS CA on ca01 (issue #9). Installed as /usr/local/sbin/guenaga-ca
+# by pki/ca01/setup.sh; run it as root.
+#
+#   guenaga-ca init                                  the CA's key and its request for the root (setup.sh runs it)
+#   guenaga-ca install-chain <infra-tls.crt> <root.crt> [root.crl]
+#                                                    install what the root signed, then the first CRL
+#   guenaga-ca issue [--ipsec] <name> [names or IPs...]
+#                                                    a key and certificate for a server, in /var/lib/guenaga-ca/issued/<name>/
+#   guenaga-ca sign [--ipsec] <request.csr> <name> [names or IPs...]
+#                                                    sign a request made on the server itself (its key never leaves it)
+#   guenaga-ca revoke <name|serial> [reason]         revoke a certificate, then a new CRL
+#   guenaga-ca crl                                   a new CRL (it lasts 7 days; a timer renews it daily)
+#   guenaga-ca root-crl <root.crl>                   publish a new root CRL brought from the root
+#   guenaga-ca publish                               copy the CRLs and CA certificates to pki-pub
+#   guenaga-ca list                                  every certificate issued, with its state
+#
+# --ipsec adds the IPsec IKE usage, for vpn-en and vpn-u1. The names (SAN) always come from the
+# command line, never from a request. Leaf keys are RSA 2048 and certificates last 397 days.
+set -euo pipefail
+
+etc="${GUENAGA_CA_ETC:-/etc/guenaga-ca}"
+home="${GUENAGA_CA_HOME:-/var/lib/guenaga-ca}"
+export CA_DIR="$home/infra-tls"
+cnf="$etc/infra-tls.cnf"
+passfile="$etc/infra-tls.pass"
+key="$CA_DIR/private/infra-tls.key"
+cacrt="$CA_DIR/certs/infra-tls.crt"
+rootcrt="$CA_DIR/certs/root.crt"
+issued="$home/issued"
+pub="$home/pub"
+# openssl.cnf reads the names from SAN on every call; only issuing sets real ones
+export SAN="DNS:unused.invalid"
+
+die() { echo "guenaga-ca: $*" >&2; exit 1; }
+
+# To the screen, and to syslog for Wazuh
+note() {
+    echo "$*"
+    if command -v logger > /dev/null; then logger -t guenaga-ca -- "$*"; fi
+}
+
+need_root() { [[ $EUID -eq 0 ]] || die "run it as root (sudo guenaga-ca ...)"; }
+need_signed() { [[ -f "$cacrt" ]] || die "the CA isn't signed yet: run install-chain with what the root signed"; }
+
+der_sha256() { openssl "$1" -in "$2" -outform DER | sha256sum | cut -d' ' -f1; }
+
+# "www.guenaga.eus 10.20.10.10" -> "DNS:www.guenaga.eus,IP:10.20.10.10"
+san_for() {
+    local name list=()
+    for name in "$@"; do
+        if [[ "$name" =~ ^[0-9]{1,3}(\.[0-9]{1,3}){3}$ ]]; then
+            list+=("IP:$name")
+        elif [[ "$name" =~ ^(\*\.)?[A-Za-z0-9]([A-Za-z0-9-]{0,62})(\.[A-Za-z0-9]([A-Za-z0-9-]{0,62}))*$ ]]; then
+            list+=("DNS:${name,,}")
+        else
+            die "not a host name or IPv4 address: $name"
+        fi
+    done
+    (IFS=,; echo "${list[*]}")
+}
+
+cmd_init() {
+    need_root
+    [[ -e "$key" ]] && die "the CA already has a key; its request is $CA_DIR/infra-tls.csr"
+    [[ -f "$cnf" ]] || die "no $cnf: run pki/ca01/setup.sh"
+    umask 077
+    mkdir -p "$CA_DIR"/{certs,crl,newcerts,private} "$issued" "$pub"
+    : > "$CA_DIR/index.txt"
+    openssl rand -hex 16 > "$CA_DIR/serial"
+    echo 1000 > "$CA_DIR/crlnumber"
+
+    # The key is encrypted with a random passphrase kept in /etc, apart from the CA's data, so a
+    # copy of /var/lib/guenaga-ca alone can't sign anything; the CRL timer still runs unattended
+    openssl rand -base64 48 | tr -d '\n' > "$passfile"
+    chmod 400 "$passfile"
+    openssl genpkey -quiet -algorithm RSA -pkeyopt rsa_keygen_bits:4096 -aes-256-cbc -pass "file:$passfile" -out "$key"
+    chmod 400 "$key"
+    openssl req -config "$cnf" -new -sha256 -key "$key" -passin "file:$passfile" -out "$CA_DIR/infra-tls.csr"
+    umask 022
+    cp "$CA_DIR/infra-tls.csr" "$home/infra-tls.csr"
+    chmod 644 "$home/infra-tls.csr"
+
+    note "Infra TLS CA key created; request $home/infra-tls.csr, SHA-256 $(der_sha256 req "$home/infra-tls.csr")"
+}
+
+cmd_install_chain() {
+    need_root
+    local inter="${1:-}" root="${2:-}" rootcrl="${3:-}"
+    [[ -f "$inter" && -f "$root" ]] || die "usage: guenaga-ca install-chain <infra-tls.crt> <root.crt> [root.crl]"
+    [[ -f "$key" ]] || die "no CA key: run init first"
+
+    # The certificate must be for this CA's own key, signed by the root, and a CA
+    [[ "$(openssl x509 -in "$inter" -noout -pubkey)" == "$(openssl pkey -in "$key" -passin "file:$passfile" -pubout)" ]] \
+        || die "$inter is not for this CA's key"
+    openssl verify -CAfile "$root" "$inter" > /dev/null || die "$inter is not signed by $root"
+    openssl x509 -in "$inter" -noout -ext basicConstraints | grep -q "CA:TRUE" || die "$inter is not a CA certificate"
+
+    install -m 644 "$root" "$rootcrt"
+    install -m 644 "$inter" "$cacrt"
+    cat "$cacrt" "$rootcrt" > "$CA_DIR/certs/chain.crt"
+
+    # ca01 itself trusts the root, like every Linux host (issue #10)
+    if [[ -d /usr/local/share/ca-certificates ]] && command -v update-ca-certificates > /dev/null; then
+        install -m 644 "$rootcrt" /usr/local/share/ca-certificates/guenaga-root-ca.crt
+        update-ca-certificates > /dev/null
+    fi
+    if [[ -n "$rootcrl" ]]; then
+        cmd_root_crl "$rootcrl" --no-publish
+    fi
+    note "Infra TLS CA installed: $(openssl x509 -in "$cacrt" -noout -subject), $(openssl x509 -in "$cacrt" -noout -enddate)"
+    cmd_crl
+}
+
+# Signs $csr for the names given and writes the files to issued/<name>/
+sign_into() {
+    local profile="$1" csr="$2"; shift 2
+    local name="${1,,}" dir
+    SAN="$(san_for "$@")"
+    dir="$issued/$name"
+
+    # A new certificate for the same name keeps the previous files, which stay valid until revoked
+    if [[ -f "$dir/$name.crt" ]]; then
+        local previous
+        previous="$dir/previous-$(date -u +%Y%m%dT%H%M%SZ)"
+        mkdir -p "$previous"
+        find "$dir" -maxdepth 1 -type f -exec mv {} "$previous/" \;
+    fi
+    mkdir -p "$dir"
+    [[ "$csr" == "$dir/$name.csr" || ! -e "$csr" ]] || cp "$csr" "$dir/$name.csr"
+
+    openssl ca -config "$cnf" -batch -notext -passin "file:$passfile" \
+        -extensions "$profile" -subj "/CN=$name" \
+        -in "$csr" -out "$dir/$name.crt"
+    cat "$cacrt" "$rootcrt" > "$dir/chain.crt"
+    cat "$dir/$name.crt" "$cacrt" > "$dir/fullchain.crt"
+    openssl verify -CAfile "$rootcrt" -untrusted "$cacrt" "$dir/$name.crt" > /dev/null
+    note "issued $name ($profile) for $SAN, serial $(openssl x509 -in "$dir/$name.crt" -noout -serial | cut -d= -f2), $(openssl x509 -in "$dir/$name.crt" -noout -enddate)"
+}
+
+profile_from() { [[ "${1:-}" == "--ipsec" ]] && echo ipsec || echo server; }
+
+cmd_issue() {
+    need_root; need_signed
+    local profile
+    profile="$(profile_from "${1:-}")"
+    [[ "${1:-}" == "--ipsec" ]] && shift
+    [[ $# -ge 1 ]] || die "usage: guenaga-ca issue [--ipsec] <name> [names or IPs...]"
+    local name="${1,,}" dir
+    san_for "$@" > /dev/null
+    dir="$issued/$name"
+
+    # The key is made here for devices that can't make their own request (MikroTik, pfSense
+    # import); a server that can should make its own and use sign
+    local tmp
+    tmp="$(mktemp -d)"
+    trap 'rm -rf "$tmp"' RETURN
+    (umask 077; openssl genpkey -quiet -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out "$tmp/$name.key")
+    openssl req -new -sha256 -key "$tmp/$name.key" -subj "/CN=$name" -out "$tmp/$name.csr"
+    sign_into "$profile" "$tmp/$name.csr" "$@"
+    install -m 600 "$tmp/$name.key" "$dir/$name.key"
+    echo "Files in $dir: $name.crt, $name.key (keep it secret), chain.crt, fullchain.crt"
+}
+
+cmd_sign() {
+    need_root; need_signed
+    local profile
+    profile="$(profile_from "${1:-}")"
+    [[ "${1:-}" == "--ipsec" ]] && shift
+    local csr="${1:-}"
+    shift || true
+    [[ -f "$csr" && $# -ge 1 ]] || die "usage: guenaga-ca sign [--ipsec] <request.csr> <name> [names or IPs...]"
+    openssl req -in "$csr" -noout -verify 2> /dev/null || die "$csr isn't a valid signed request"
+    sign_into "$profile" "$csr" "$@"
+    echo "Files in $issued/${1,,}: ${1,,}.crt, chain.crt, fullchain.crt"
+}
+
+cmd_revoke() {
+    need_root; need_signed
+    local what="${1:-}" reason="${2:-superseded}" cert
+    [[ "$what" =~ ^[A-Za-z0-9*][A-Za-z0-9.*-]*$ ]] || die "usage: guenaga-ca revoke <name|serial> [reason]"
+    if [[ -f "$issued/${what,,}/${what,,}.crt" ]]; then
+        cert="$issued/${what,,}/${what,,}.crt"
+    elif [[ -f "$CA_DIR/newcerts/${what^^}.pem" ]]; then
+        cert="$CA_DIR/newcerts/${what^^}.pem"
+    else
+        die "no certificate named or numbered $what (guenaga-ca list)"
+    fi
+    openssl ca -config "$cnf" -passin "file:$passfile" -revoke "$cert" -crl_reason "$reason"
+    note "revoked $(openssl x509 -in "$cert" -noout -subject), serial $(openssl x509 -in "$cert" -noout -serial | cut -d= -f2), reason $reason"
+    cmd_crl
+}
+
+cmd_crl() {
+    need_root
+    if [[ ! -f "$cacrt" ]]; then
+        echo "The CA isn't signed yet, so there is no CRL to make."
+        return 0
+    fi
+    openssl ca -config "$cnf" -gencrl -passin "file:$passfile" -out "$CA_DIR/crl/infra-tls.crl.pem"
+    openssl crl -in "$CA_DIR/crl/infra-tls.crl.pem" -outform DER -out "$CA_DIR/crl/infra-tls.crl"
+    note "Infra TLS CRL renewed, $(openssl crl -in "$CA_DIR/crl/infra-tls.crl.pem" -noout -nextupdate)"
+    cmd_publish
+}
+
+cmd_root_crl() {
+    need_root; need_signed
+    local file="${1:-}" form=DER
+    [[ -f "$file" ]] || die "usage: guenaga-ca root-crl <root.crl>"
+    openssl crl -in "$file" -inform DER -noout 2> /dev/null || form=PEM
+    openssl crl -in "$file" -inform "$form" -CAfile "$rootcrt" -noout 2> /dev/null || die "$file isn't a CRL signed by the root"
+    openssl crl -in "$file" -inform "$form" -outform DER -out "$CA_DIR/crl/root.crl"
+    note "root CRL installed, $(openssl crl -in "$CA_DIR/crl/root.crl" -inform DER -noout -nextupdate)"
+    [[ "${2:-}" == "--no-publish" ]] || cmd_publish
+}
+
+# pki-pub serves these at http://pki.guenaga.lan/crl/ and /ca/ (the CDP and AIA URLs), as DER
+cmd_publish() {
+    need_root; need_signed
+    mkdir -p "$pub/crl" "$pub/ca"
+    install -m 644 "$CA_DIR/crl/infra-tls.crl" "$pub/crl/infra-tls.crl"
+    [[ -f "$CA_DIR/crl/root.crl" ]] && install -m 644 "$CA_DIR/crl/root.crl" "$pub/crl/root.crl"
+    openssl x509 -in "$cacrt" -outform DER -out "$pub/ca/infra-tls.crt"
+    openssl x509 -in "$rootcrt" -outform DER -out "$pub/ca/root.crt"
+    chmod 644 "$pub"/ca/*.crt
+
+    local PUBLISH_TARGET=""
+    # shellcheck source=/dev/null
+    [[ -f "$etc/publish.conf" ]] && . "$etc/publish.conf"
+    if [[ -z "$PUBLISH_TARGET" ]]; then
+        echo "Published to $pub (set PUBLISH_TARGET in $etc/publish.conf to copy it to pki-pub)"
+        return 0
+    fi
+    # pki-pub's host key is remembered on first contact, in the CA's own data (the timer's service
+    # can't write to /root), and must match from then on
+    scp -q -r -i "$etc/publish_ed25519" -o BatchMode=yes -o StrictHostKeyChecking=accept-new \
+        -o UserKnownHostsFile="$home/known_hosts" \
+        "$pub/crl" "$pub/ca" "$PUBLISH_TARGET" || die "couldn't copy to $PUBLISH_TARGET"
+    note "published the CRLs and CA certificates to $PUBLISH_TARGET"
+}
+
+cmd_list() {
+    need_root
+    [[ -f "$CA_DIR/index.txt" ]] || die "no CA yet: run init"
+    printf '%-9s %-15s %-34s %s\n' STATE EXPIRES SERIAL SUBJECT
+    awk -F'\t' '{
+        state = ($1 == "V") ? "valid" : ($1 == "R") ? "revoked" : "expired"
+        printf "%-9s 20%s-%s-%s   %-34s %s\n", state, substr($2,1,2), substr($2,3,2), substr($2,5,2), $4, $6
+    }' "$CA_DIR/index.txt"
+}
+
+case "${1:-}" in
+    init) cmd_init ;;
+    install-chain) shift; cmd_install_chain "$@" ;;
+    issue) shift; cmd_issue "$@" ;;
+    sign) shift; cmd_sign "$@" ;;
+    revoke) shift; cmd_revoke "$@" ;;
+    crl) cmd_crl ;;
+    root-crl) shift; cmd_root_crl "$@" ;;
+    publish) cmd_publish ;;
+    list) cmd_list ;;
+    *) sed -n '2,23p' "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
+esac

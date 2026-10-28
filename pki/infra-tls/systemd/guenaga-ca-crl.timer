@@ -1,0 +1,11 @@
+# Every day, and at the next boot if a day was missed: the CRL is always fresh for 6 more days
+[Unit]
+Description=Guenaga Infra TLS CA: daily CRL
+
+[Timer]
+OnCalendar=daily
+RandomizedDelaySec=30min
+Persistent=true
+
+[Install]
+WantedBy=timers.target
