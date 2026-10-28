@@ -29,6 +29,7 @@ Public certificates go in `certs/` once they exist.
 | `ca01/setup.sh` | Turns an Ubuntu (or Debian) server into ca01 in one command |
 | `infra-tls/guenaga-ca`, `infra-tls/openssl.cnf` | The Infra TLS CA's tool and config, installed on ca01 by `setup.sh` |
 | `infra-tls/systemd/` | The timer that renews and publishes the CRL daily |
+| `windows/` | The Users CA on Windows Server: install, complete, autoenrollment GPO, publishing |
 
 ## 1. The root ceremony (once)
 
@@ -70,8 +71,7 @@ sudo guenaga-ca install-chain guenaga-infra-tls-ca.crt root.crt root.crl
 It checks the certificate is for ca01's own key and signed by the root, makes ca01 trust the
 root, and makes the first CRL. Commit `guenaga-infra-tls-ca.crt` to `pki/certs/`.
 
-The AD CS subordinate is signed the same way, with its request from the Windows CA's setup:
-`sudo ./root-ca.sh sign <its .req> windows`.
+The Windows CA is signed the same way, with the `windows` profile (step 5).
 
 ## 4. Issuing certificates
 
@@ -94,6 +94,50 @@ Each lands in `/var/lib/guenaga-ca/issued/<name>/`: the certificate, its key, `c
 request should, and keep the key: `sudo guenaga-ca sign <request.csr> <name>`. Issuing a name
 again keeps the previous files in a dated folder. `sudo guenaga-ca list` shows them all.
 
+## 5. The Windows CA: Guenaga Users CA
+
+An AD CS Enterprise Subordinate CA under the same root. The domain's computers, users, domain
+controllers and NPS get their certificates from it by autoenrollment, with no command per
+certificate. Best on its own domain-joined member server (ca-win01); in the lab it can share dc01,
+with the drawback that a DC that is also a CA can't be demoted cleanly, so say so in the docs.
+
+In an elevated PowerShell on that server, as an Enterprise Admin, from this repo's `pki\windows\`:
+
+```powershell
+.\Install-UsersCA.ps1
+```
+
+It installs AD CS with RSA 4096 keys and no default templates, and writes the request,
+`C:\PKI\users-ca.req`, printing its SHA-256. On the root VM:
+`sudo ./root-ca.sh sign users-ca.req windows` (the fingerprint must match; the certificate keeps the
+request's subject, `CN=Guenaga Users CA, DC=guenaga, DC=lan`). Back on Windows, with
+`out/guenaga-users-ca.crt`, `out/root.crt` and `out/root.crl`:
+
+```powershell
+.\Complete-UsersCA.ps1 -CaCert guenaga-users-ca.crt -RootCert root.crt -RootCrl root.crl
+```
+
+It trusts the root and publishes it in AD (every domain member then trusts it, issue #10), starts
+the CA, sets 7-day CRLs and URLs on `http://pki.guenaga.lan` only, limits issued certificates to
+1 year, audits every CA event, and schedules `Publish-UsersCA.ps1` daily. It offers these
+templates:
+
+| Template | For | Enrollment |
+|---|---|---|
+| Kerberos Authentication | Domain controllers: LDAPS, Kerberos | Automatic (default) |
+| RAS and IAS Server | NPS / RADIUS, the EAP server certificate | Automatic, for the RAS and IAS Servers group |
+| Workstation Authentication | Domain computers: Wi-Fi EAP-TLS, VPN | Automatic (the script grants it to Domain Computers) |
+| User | Staff: remote-access VPN | Requested by the user (certmgr.msc); automatic needs a version 2 copy |
+
+Then, once, on a domain controller: `.\Enable-Autoenrollment.ps1`. It links the GPO
+"Guenaga - Certificate autoenrollment" to the domain. On a PC: `gpupdate /force`,
+`certutil -pulse`, and the certificate shows in `certlm.msc` > Personal.
+
+The CA checks its own certificate against the root's CRL every time it starts. Until pki-pub
+serves it, `Complete-UsersCA.ps1` puts the CRL in the local store; add each new root CRL the same
+way (`certutil -addstore -f CA root.crl`). NPS refuses EAP-TLS when it can't read a CRL, so Wi-Fi
+needs pki-pub up.
+
 ## Revocation and CRLs
 
 - `sudo guenaga-ca revoke <name> [reason]` revokes a certificate and publishes a new CRL at once.
@@ -104,10 +148,12 @@ again keeps the previous files in a dated folder. `sudo guenaga-ca list` shows t
 
 ## Publishing (pki-pub)
 
-pki-pub serves `/crl/infra-tls.crl`, `/crl/root.crl`, `/ca/infra-tls.crt` and `/ca/root.crt` (DER) at
-`http://pki.guenaga.lan`. Until it exists, `guenaga-ca` keeps them in `/var/lib/guenaga-ca/pub`.
-Once it does, give it the public key in `/etc/guenaga-ca/publish_ed25519.pub` (SFTP only) and set
-`PUBLISH_TARGET` in `/etc/guenaga-ca/publish.conf`; every new CRL is then copied there.
+pki-pub serves, as DER at `http://pki.guenaga.lan`: `/crl/root.crl`, `/ca/root.crt`,
+`/crl/infra-tls.crl` and `/ca/infra-tls.crt` (from ca01), and `/crl/users-ca.crl` and
+`/ca/users-ca.crt` (from the Windows CA). Until it exists, each CA keeps them locally
+(`/var/lib/guenaga-ca/pub`, `C:\PKI\pub`). Once it does, give it each CA's public key
+(`/etc/guenaga-ca/publish_ed25519.pub`, `C:\PKI\publish_ed25519.pub`; SFTP only) and set
+`PUBLISH_TARGET` in that CA's `publish.conf`; every new CRL is then copied there.
 
 ## On ca01
 

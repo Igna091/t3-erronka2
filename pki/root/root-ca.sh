@@ -85,11 +85,15 @@ cmd_sign() {
     echo "Key:       $(openssl req -in "$csr" -noout -text | sed -n 's/^ *Public-Key: //p')"
     echo "Profile:   $profile (5 years, pathlen:0)"
     echo "Request SHA-256: $(openssl req -in "$csr" -outform DER | sha256sum | cut -d' ' -f1)"
-    read -r -p "Compare the fingerprint with the one ca01 printed. Sign it? Type yes: " answer
+    read -r -p "Compare the fingerprint with the one the CA printed. Sign it? Type yes: " answer
     [[ "$answer" == yes ]] || die "not signed"
 
+    # AD CS expects its certificate's subject exactly as it wrote it (DC=lan, DC=guenaga, CN=...),
+    # so for it the subject keeps the request's order instead of the policy's
+    local keep=()
+    [[ "$profile" == windows ]] && keep=(-preserveDN)
     mkdir -p "$out"
-    openssl ca -config "$cnf" -batch -notext "${pass[@]}" \
+    openssl ca -config "$cnf" -batch -notext "${pass[@]}" "${keep[@]}" \
         -policy "policy_$profile" -extensions "v3_intermediate_$profile" \
         -in "$csr" -out "$out/$name.crt"
     openssl verify -CAfile "$crt" "$out/$name.crt" > /dev/null
