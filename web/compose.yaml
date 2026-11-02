@@ -65,7 +65,7 @@ x-laravel-tmpfs: &laravel-tmpfs
 services:
   nginx:
     <<: *hardening
-    image: nginx:1.31.0@sha256:800e7c98538c6bf725f5177e841aa720ae0ed1c378bbea368b6330bfe18a36b3
+    image: nginx:1.31.7@sha256:8632b3314d74c61f0e27f59055bab13f7793b988c94c090154d867bc29e0f39b
     # Unprivileged: listens on 8080/8443 inside the container, published as 80/443
     user: "101:101"
     ports:
