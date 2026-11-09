@@ -9,7 +9,7 @@
 # Stages: base (PHP + extensions) -> dev (adds Composer; the "tools" service in compose.dev.yaml)
 #         -> vendor (installs production dependencies) -> runtime (what web01 runs; no Composer).
 
-FROM php:8.5.12-fpm-alpine3.24@sha256:4c2818074ec49f6abe46620f3965e0cb75bc3a5f2b417edd1aacaba6f091c40e AS base
+FROM php:8.5.12-fpm-alpine3.24@sha256:64535609509e0fd5c8529359e6b599a68ce42089defd565f7881efdae7687cea AS base
 
 # pdo_pgsql for PostgreSQL; gd to re-encode uploaded photos (and draw a self-hosted CAPTCHA,
 # since php has no route to the internet). The compiler and -dev packages are removed afterwards
